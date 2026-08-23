@@ -62,13 +62,21 @@ const DEFAULTS = {
 }
 
 function loadFileConfig() {
+  // 首次运行（文件不存在）返回 null，由调用方决定是否生成默认配置；
+  // 只有"存在但解析失败"才返回 {}（不覆盖损坏文件，避免误清用户数据）。
+  if (!fs.existsSync(CONFIG_FILE)) return null
   try {
-    if (!fs.existsSync(CONFIG_FILE)) return {}
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
   } catch (error) {
     log('config', `config.json 解析失败，使用默认配置: ${error.message}`)
     return {}
   }
+}
+
+// 写回 config.json（0600：含 API key，仅本人可读写）。统一入口，避免到处 mkdir/writeFile。
+function writeConfigFile(cfg) {
+  fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true })
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), { mode: 0o600 })
 }
 
 function merge(base, extra) {
@@ -84,7 +92,15 @@ function merge(base, extra) {
 }
 
 function loadConfig() {
-  const config = merge(DEFAULTS, loadFileConfig())
+  const fileConfig = loadFileConfig()
+  const config = merge(DEFAULTS, fileConfig)
+
+  // 打包态首次运行：本地还没有 config.json，自动生成一份默认配置，
+  // 让用户打开控制面板即可看到/修改，也避免"没有配置文件却在跑"的困惑。
+  if (paths.isPackaged && fileConfig === null) {
+    writeConfigFile(config)
+    log('config', `未找到 config.json，已生成默认配置: provider=${config.asr.provider}`)
+  }
 
   // 环境变量优先级最高，方便临时切换/调试
   if (process.env.PHVOICE_ASR_PROVIDER) config.asr.provider = process.env.PHVOICE_ASR_PROVIDER
@@ -228,8 +244,7 @@ function saveSettings(next) {
   }
 
     config.asr = merge(config.asr, asrPatch)
-  fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true })
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 })
+  writeConfigFile(config)
   log('config', `配置已保存: provider=${config.asr.provider}`)
   return getSettings()
 }
