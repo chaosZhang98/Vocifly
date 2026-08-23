@@ -1,0 +1,61 @@
+appId: com.phvoice.app
+productName: PhVoice
+
+# 本地自用，不出网、不生成发布元数据；
+# 否则 electron-builder 因无 repository 生成 update-info 时报 computeChannelNames 崩溃
+publish: null
+
+# 输出目录 + 打包输入资源（icon/背景等都从 assets/ 取，与运行时资源同目录）
+directories:
+  output: dist
+  buildResources: assets
+
+# 只把运行时需要的文件打进 asar；把 model/runtime/config.json/scripts 排除
+files:
+  - src/**/*
+  - renderer/**/*
+  - assets/**/*
+  - package.json
+  - "!models/**/*"
+  - "!runtime/**/*"
+  - "!config.json"
+  - "!scripts/**/*"
+  - "!**/*.bak*"
+  - "!README.md"
+
+asar: true
+# sherpa-onnx 是原生 .node + dylib，必须解出 asar 才能被 dlopen
+asarUnpack:
+  - "**/node_modules/sherpa-onnx-node/**"
+  - "**/node_modules/sherpa-onnx-darwin-arm64/**"
+
+# 需要真实文件系统的资源：swift 源码（swiftc 是外部进程，读不了 asar）+ 配置模板
+extraResources:
+  - from: scripts
+    to: scripts
+    filter: ["**/*.swift"]
+  - from: config.example.json
+    to: config.example.json
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.utilities
+  # 应用图标：用 assets/ 里的源图，electron-builder 自动生成 icns
+  icon: assets/icon-512.png
+  # 本地开发不签名；正式分发需去掉 identity:null 并注入证书 + notarize
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extendInfo:
+    LSUIElement: true
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

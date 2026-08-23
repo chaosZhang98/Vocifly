@@ -1,0 +1,25 @@
+{
+  "name": "phvoice",
+  "version": "0.1.0",
+  "description": "PhVoice - 手机当麦克风，Mac 语音输入",
+  "main": "src/interface/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "node src/interface/server.js",
+    "setup:https": "node scripts/setup-local-https.js",
+    "test:asr": "node scripts/test-asr.js",
+    "test:mock": "node scripts/test-bailian-mock.js",
+    "trace": "node scripts/trace-recognition.js",
+    "build:mac": "electron-builder --mac --publish never && codesign --force --deep --sign - dist/mac-arm64/PhVoice.app",
+    "dist": "electron-builder --mac dmg --publish never && codesign --force --deep --sign - dist/mac-arm64/PhVoice.app"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "sherpa-onnx-node": "^1.13.6",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "sendRules": {},
+  "deleteRules": {},
+  "asr": {
+    "provider": "bailian",
+    "bailian": {
+      "apiKey": "sk-你的百炼API Key",
+      "model": "qwen-audio-3.0-asr-flash-streaming",
+      "workspaceId": "",
+      "gateway": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+      "vocabulary": {},
+      "contextEnabled": true
+    }
+  }
+}

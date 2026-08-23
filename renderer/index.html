@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="theme-color" content="#f4f6f4"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="PhVoice"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="icon" href="assets/icon-192.png"/>
+<link rel="apple-touch-icon" href="assets/icon-192.png"/>
+<title>PhVoice</title>
+<link rel="stylesheet" href="style.css?v=53"/>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <button id="toolsBtn" class="tools-btn" type="button" aria-label="控制" aria-expanded="false">
+        <span class="icon-chip" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </span>
+        <svg class="tools-arrow" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 5l7 7-7 7"/>
+        </svg>
+      </button>
+      <div id="status" class="status offline" role="status">连接中…</div>
+    </div>
+    <div class="topbar-center">
+      <button id="pageSwitch" class="page-switch" type="button" role="switch" aria-checked="false" aria-label="页面切换">
+        <span class="roller-ridges" aria-hidden="true"></span>
+        <span id="rollerDots" class="roller-dots" aria-hidden="true"></span>
+      </button>
+    </div>
+    <button id="quitBtn" class="quit-btn" type="button" aria-label="退出当前应用">exit</button>
+  </header>
+
+  <!-- 弱网提示：录音中网络不稳定时短暂出现，不打断录音 -->
+  <div id="netHint" class="net-hint" role="status" aria-live="polite"></div>
+
+  <main class="result-area">
+    <div id="resultPanels" class="result-panels">
+      <!-- 面板1：对话/回显（顶部实时回显 + 最近一条识别结果） -->
+      <section class="result-panel panel-dialog" id="panelDialog" aria-label="对话">
+        <!-- 右上：回显态 <-> 输入态 原位切换（键盘 / 麦克风） -->
+        <div class="dialog-tools">
+          <button id="composeToggle" class="compose-toggle" type="button" aria-label="切换到输入" aria-pressed="false">
+            <svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="6" width="18" height="12" rx="2"/>
+              <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h8"/>
+            </svg>
+          </button>
+        </div>
+        <!-- 说话中的实时回显置顶、随语句增长；其下仅保留最近一条识别结果 -->
+        <div id="partial" class="partial hidden"></div>
+        <div id="finals"></div>
+        <!-- 输入态：文字 + 附件（图片/文件原子上屏） -->
+        <div id="composer" class="composer hidden">
+          <div id="composerChips" class="composer-chips"></div>
+          <div class="composer-main">
+            <textarea id="composerInput" class="composer-input" rows="1" placeholder="输入文字…" enterkeyhint="send" autocomplete="off"></textarea>
+            <button id="composerAttach" class="composer-attach" type="button" aria-label="添加附件">
+              <svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <input id="composerFile" type="file" multiple hidden accept="*/*">
+          </div>
+          <button id="composerSend" class="composer-send" type="button" aria-label="上屏">
+            <svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 19V5"/>
+              <path d="M5 12l7-7 7 7"/>
+            </svg>
+            <span>上屏</span>
+          </button>
+        </div>
+      </section>
+      <!-- 面板2：触摸板（默认首页，与对话左右滑动切换） -->
+      <section class="result-panel panel-trackpad" id="panelTrackpad" aria-label="触摸板">
+        <span class="trackpad-edge edge-up" aria-hidden="true"></span>
+        <span class="trackpad-edge edge-down" aria-hidden="true"></span>
+        <span class="trackpad-edge edge-left" aria-hidden="true"></span>
+        <span class="trackpad-edge edge-right" aria-hidden="true"></span>
+        <canvas id="touchCanvas" class="touch-canvas" aria-hidden="true"></canvas>
+        <div class="trackpad-zones" aria-hidden="true">
+          <span class="zone-side zone-left"></span>
+          <span class="zone-divider"></span>
+          <span class="zone-side zone-right"></span>
+        </div>
+        <div class="trackpad-hint" aria-hidden="true">触控鼠标 · 左边缘右滑返回对话</div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 切换 App：全屏前置覆盖层，背景毛玻璃模糊，点击背景取消 -->
+  <div id="appTrayOverlay" class="app-tray-overlay hidden" role="dialog" aria-modal="true" aria-label="切换应用">
+    <div id="appTray" class="app-tray"></div>
+  </div>
+
+  <div class="dock">
+    <div id="recHint" class="rec-hint hidden">
+      <span class="rec-dot" aria-hidden="true"></span>
+      <span id="recHintText">再点一次 结束</span>
+      <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    </div>
+
+    <div class="dock-row">
+      <button id="deleteBtn" class="side-btn delete-btn" type="button" aria-label="回退上次内容">
+        <svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 14 4 9l5-5"/>
+          <path d="M4 9h11a6 6 0 0 1 0 12h-4"/>
+        </svg>
+        <span>回退</span>
+      </button>
+
+      <button id="talk" class="talk-btn" disabled>
+        <span class="mic-icon">
+          <svg class="ico" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+            <path d="M12 18v4"/>
+          </svg>
+        </span>
+        <span id="talkText" class="talk-text">点击 说话</span>
+      </button>
+
+      <button id="enterBtn" class="side-btn enter-btn" type="button" aria-label="执行" aria-pressed="false">
+        <svg class="ico" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 8v6a1 1 0 0 0 1 1h14"/>
+          <path d="m15 10 4 4-4 4"/>
+        </svg>
+        <span>执行</span>
+      </button>
+    </div>
+  </div>
+
+    <!-- 控制面板：与顶部横条联动，灵动岛式横向展开，默认收起 -->
+  <div id="controlIsland" class="control-island hidden" role="dialog" aria-label="控制">
+    <div class="island-inner">
+      <!-- 最左：收回箭头（误触后可一键收起控制岛） -->
+      <button id="islandCloseBtn" class="island-item island-close" type="button" aria-label="收回控制面板">
+        <span class="island-ic" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 5l-7 7 7 7"/>
+          </svg>
+        </span>
+      </button>
+
+      <button id="switcherBtn" class="island-item" type="button" aria-pressed="false">
+        <span class="island-ic" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="7" width="12" height="9" rx="1.5"/>
+            <rect x="9" y="4" width="12" height="9" rx="1.5"/>
+          </svg>
+        </span>
+        <span class="island-label">切换 App</span>
+        <span id="switcherText" class="island-sub"></span>
+      </button>
+
+      <button id="missionBtn" class="island-item" type="button" aria-label="任务控制">
+        <span class="island-ic" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="10" height="6" rx="1.5"/>
+            <rect x="11" y="6" width="10" height="6" rx="1.5"/>
+            <rect x="3" y="14" width="10" height="6" rx="1.5"/>
+            <rect x="11" y="14" width="10" height="6" rx="1.5"/>
+          </svg>
+        </span>
+        <span class="island-label">任务控制</span>
+      </button>
+
+      <button id="exposeBtn" class="island-item" type="button" aria-label="App 窗口">
+        <span class="island-ic" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="2"/>
+            <path d="M3 9h18"/>
+          </svg>
+        </span>
+        <span class="island-label">App 窗口</span>
+      </button>
+
+      <button id="launchpadBtn" class="island-item" type="button" aria-label="启动台">
+        <span class="island-ic" aria-hidden="true">
+          <svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="6" height="6" rx="1.5"/>
+            <rect x="14" y="4" width="6" height="6" rx="1.5"/>
+            <rect x="4" y="14" width="6" height="6" rx="1.5"/>
+            <rect x="14" y="14" width="6" height="6" rx="1.5"/>
+          </svg>
+        </span>
+        <span class="island-label">启动台</span>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- 退出确认弹窗 -->
+  <div id="quitModal" class="modal-mask hidden" role="dialog" aria-modal="true" aria-label="退出确认">
+    <div class="modal-card">
+      <p class="modal-title" id="quitModalTitle">退出当前应用？</p>
+      <p class="modal-text" id="quitModalText">将关闭当前正在使用的应用窗口。</p>
+      <div class="modal-actions">
+        <button id="quitCancel" class="modal-btn ghost" type="button">取消</button>
+        <button id="quitConfirm" class="modal-btn danger" type="button">退出</button>
+      </div>
+    </div>
+  </div>
+
+    <!-- 临时操作反馈（不占用左上连接状态） -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script src="app.js?v=56"></script>
+
+</body>
+</html>
