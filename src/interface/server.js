@@ -700,7 +700,7 @@ function renderAndroidSetupPage(ctx) {
     <p class="intro">只需要在这台安卓手机 / 平板上配置一次。配置完成后，以后直接使用 PhVoice 的正常输入二维码。</p>
 
     <div class="callout">
-      <strong>重要：请用「Chrome」浏览器打开本页完成验证。</strong> 安卓系统默认只信任“用户 CA 证书”，部分国产浏览器（含小米自带浏览器）或应用内嵌页面不会信任它，会导致“证书已装好但验证仍失败”。如果这一步用自带浏览器验证不通过，请装一个 Chrome 并在此重新打开本页。
+      <strong>重要：请用「Chrome」浏览器打开本页完成验证。</strong> 安卓系统默认只信任“用户 CA 证书”，部分国产浏览器或应用内嵌页面不会信任它，会导致“证书已装好但验证仍失败”。如果这一步用自带浏览器验证不通过，请装一个 Chrome 并在此重新打开本页。
     </div>
 
     <h2>第一步：下载证书</h2>
@@ -718,8 +718,8 @@ function renderAndroidSetupPage(ctx) {
       <span class="number">2</span>
       <div>
         <strong>进入系统设置，安装证书</strong>
-        <span class="path">设置 &gt; 密码与安全 &gt; 加密与凭据 &gt; 从存储设备安装证书 &gt; CA 证书</span>
-        <p>小米 / 红米平板的入口在“密码与安全”。其他安卓手机路径类似：<span class="path">设置 &gt; 安全 &gt; 加密与凭据 &gt; 安装证书</span>。这里务必选择 <strong>“CA 证书”</strong>，不要选“VPN 和应用用户证书”。</p>
+        <span class="path">设置 &gt; 安全 &gt; 加密与凭据 &gt; 安装证书 &gt; CA 证书</span>
+        <p>不同品牌入口可能不同，部分手机在「设置 &gt; 密码与安全 &gt; 加密与凭据 &gt; 从存储设备安装证书」下。这里务必选择 <strong>“CA 证书”</strong>，不要选“VPN 和应用用户证书”。</p>
       </div>
     </div>
 
@@ -737,7 +737,7 @@ function renderAndroidSetupPage(ctx) {
       <span class="number">4</span>
       <div>
         <strong>去“受信任的凭据”里确认</strong>
-        <span class="path">设置 &gt; 密码与安全 &gt; 加密与凭据 &gt; 受信任的凭据 &gt; 用户</span>
+        <span class="path">设置 &gt; 加密与凭据 &gt; 受信任的凭据 &gt; 用户</span>
         <p>应能看到一条以 <strong>“mkcert …”</strong> 命名的证书，且右侧开关处于<strong>打开</strong>状态。如果这里看不到，说明第二步选错了类型，请回到第二步重新选择<strong>“CA 证书”</strong>。</p>
       </div>
     </div>
