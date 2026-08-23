@@ -66,12 +66,23 @@ function getLocalHostname() {
   }
 }
 
-function commandExists(command) {
+// mkcert 可能不在 GUI 进程 PATH（Finder/launchd 默认无 /opt/homebrew/bin），
+// 先按常见安装位置 + PATH 兜底找，避免把"找不到可执行文件"误判成"未安装"。
+function findMkcert() {
+  const candidates = ['/opt/homebrew/bin/mkcert', '/usr/local/bin/mkcert', '/usr/bin/mkcert']
+  for (const c of candidates) {
+    try {
+      execFileSync(c, ['-version'], { stdio: 'ignore' })
+      return c
+    } catch {
+      // 继续找下一个
+    }
+  }
   try {
-    execFileSync(command, ['-version'], { stdio: 'ignore' })
-    return true
+    execFileSync('mkcert', ['-version'], { stdio: 'ignore' })
+    return 'mkcert'
   } catch {
-    return false
+    return null
   }
 }
 
@@ -87,13 +98,25 @@ function certCoversCurrentNetwork() {
 }
 
 function ensureLocalCertificate() {
-  if (!commandExists('mkcert')) {
+  const lanIp = getLanIp()
+  const localHostname = getLocalHostname()
+  const names = ['localhost', '127.0.0.1', '::1', lanIp, localHostname].filter(Boolean)
+
+  // 已有证书且 SAN 覆盖当前网络 → 直接使用，无需 mkcert。
+  // mkcert 只在需要新建/重签时才用到；GUI 启动的进程 PATH 常无 homebrew，不应因此强行退 HTTP。
+  if (certCoversCurrentNetwork() && fs.existsSync(CA_FILE)) {
+    return { ok: true, certFile: CERT_FILE, keyFile: KEY_FILE, caFile: CA_FILE, lanIp, localHostname, names }
+  }
+
+  // 没有有效证书 → 需要 mkcert 新建/重签
+  const mkcert = findMkcert()
+  if (!mkcert) {
     return { ok: false, reason: '未安装 mkcert，请先运行 brew install mkcert' }
   }
 
   let caRoot
   try {
-    caRoot = execFileSync('mkcert', ['-CAROOT'], { encoding: 'utf8' }).trim()
+    caRoot = execFileSync(mkcert, ['-CAROOT'], { encoding: 'utf8' }).trim()
   } catch (error) {
     return { ok: false, reason: `无法读取 mkcert CA 目录: ${error.message}` }
   }
@@ -103,15 +126,10 @@ function ensureLocalCertificate() {
     return { ok: false, reason: '本地 CA 尚未创建，请先运行 npm run setup:https' }
   }
 
-  const lanIp = getLanIp()
-  const localHostname = getLocalHostname()
-  const names = ['localhost', '127.0.0.1', '::1', lanIp, localHostname].filter(Boolean)
-
   try {
     fs.mkdirSync(CERT_DIR, { recursive: true })
-    if (!certCoversCurrentNetwork()) {
-      execFileSync('mkcert', ['-cert-file', CERT_FILE, '-key-file', KEY_FILE, ...names], { stdio: 'pipe' })
-    }
+    // 走到这里 certCoversCurrentNetwork() 必为 false（否则上面已 return），直接重签
+    execFileSync(mkcert, ['-cert-file', CERT_FILE, '-key-file', KEY_FILE, ...names], { stdio: 'pipe' })
     fs.copyFileSync(rootCaFile, CA_FILE)
   } catch (error) {
     return { ok: false, reason: `本地证书生成失败: ${error.message}` }
