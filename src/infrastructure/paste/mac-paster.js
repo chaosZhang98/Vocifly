@@ -125,33 +125,51 @@ function countGraphemes(text) {
   }
 }
 
-// 默认 Cmd+Z 撤销一次粘贴，不依赖光标位置，也不会数错 emoji/长文本；
-// 只有规则明确选了 backspace 且文本较短时才用退格。
-function deleteStep(text) {
-  if (!text) return
+// 回退上次上屏。默认走「规则自适应」：Cmd+Z 撤销（不依赖光标位置）或按规则退格。
+// @param text 回退目标文本（用户上屏的那句）
+// @param opts.mode 可选。'undo' 强制 Cmd+Z；'backspace' 强制逐字符退格（等效键盘删除键，
+//   用于终端等 Cmd+Z 不撤销粘贴内容的场景）；不传则按 deleteRules 自适应。
+// @returns {Promise<boolean>} 删除真正执行完成后 resolve(true)；跳过(不删除规则/空文本) resolve(false)。
+//   —— 供「优化替换」等需要「先删旧文、再上新文」的用例 await 时序；原有 fire-and-forget 调用方不受影响。
+function deleteStep(text, opts = {}) {
+  if (!text) return Promise.resolve(false)
   const app = getFrontmostApp()
+  const force = opts.mode // 'undo' | 'backspace' | undefined(adaptive)
   const rule = resolveDeleteRule(app, config.deleteRules)
-  if (rule === 'none') {
+  // 显式删除键（force=backspace）绕过规则，始终执行；自适应路径才受「不删除」规则约束。
+  if (!force && rule === 'none') {
     log('paste', `前台 ${app?.name || '未知 App'} 配置为不删除，跳过`)
-    return
+    return Promise.resolve(false)
   }
-  setTimeout(() => {
-    const runDelete = () => {
-      if (rule === 'undo' || countGraphemes(text) > 500) {
-        if (macControl.send('UNDO')) return Promise.resolve()
-        return execAsync('osascript', ['-e', 'tell application "System Events" to key code 6 using {command down}'])
+  return new Promise((resolve) => {
+    setTimeout(async () => {
+      const runDelete = async () => {
+        const useUndo = force === 'undo' || (!force && (rule === 'undo' || countGraphemes(text) > 500))
+        if (useUndo) {
+          // 优先走常驻 helper 并等待 ACK（与 paste 一致）；无权限或 helper 不可用时退回 osascript。
+          // 不能用 fire-and-forget send()：它只表示「写进 stdin 成功」，即便 helper 回 NOPERM 也会误报成功。
+          if (await macControl.sendAck('UNDO', 8000)) return true
+          if (macControl.isPermissionDenied()) throw new Error('缺少「辅助功能」权限')
+          await execAsync('osascript', ['-e', 'tell application "System Events" to key code 6 using {command down}'])
+          return true
+        }
+        const n = countGraphemes(text)
+        if (await macControl.sendAck(`BACKSPACE ${n}`, 8000)) return true
+        if (macControl.isPermissionDenied()) throw new Error('缺少「辅助功能」权限')
+        const script = `tell application "System Events"\nrepeat ${n} times\nkey code 51\ndelay 0.008\nend repeat\nend tell`
+        await execAsync('osascript', ['-e', script], { timeout: 15000 })
+        return true
       }
-      const n = countGraphemes(text)
-      const script = `tell application "System Events"\nrepeat ${n} times\nkey code 51\ndelay 0.008\nend repeat\nend tell`
-      if (macControl.send(`BACKSPACE ${n}`)) return Promise.resolve()
-      return execAsync('osascript', ['-e', script], { timeout: 15000 })
-    }
-    runDelete()
-      .then(() => {
-        log('paste', `已删除上次输入（${app?.name || '未知 App'}）`)
-      })
-      .catch((e) => log('paste', '模拟删除失败（检查辅助功能权限）:', e.message))
-  }, config.deleteDelayMs || 120)
+      try {
+        await runDelete()
+        log('paste', `已删除上次输入（${force ? force : '自适应'} / ${app?.name || '未知 App'}）`)
+        resolve(true)
+      } catch (e) {
+        log('paste', '模拟删除失败（检查辅助功能权限）:', e.message)
+        resolve(false)
+      }
+    }, config.deleteDelayMs || 120)
+  })
 }
 
 function switchWindow(dir) {
@@ -190,7 +208,9 @@ function gesture(action) {
   // 系统手势（调度中心/App Exposé）走 osascript System Events：
   // 自带的 mac-control 助手用 CGEventPost 合成按键时，macOS 不会把这些系统手势热键真正触发，
   // 而 System Events 实测可靠（不会像 CGEvent 那样被系统吞掉）。
-  const keyCode = action === 'expose' ? '125' : '126'   // 125=下(Down), 126=上(Up)
+  // 手势 → 快捷键：mission=任务控制(Control+↑) expose=App 窗口(Control+↓) spacesLeft/Right=切换空间(Control+←/→)
+  const keyCode = { mission: '126', expose: '125', spacesLeft: '123', spacesRight: '124' }[action]
+  if (!keyCode) { log('paste', `未知手势: ${action}`); return }
   execAsync('osascript', ['-e', `tell application "System Events" to key code ${keyCode} using control down`], { timeout: 3000 })
     .then(() => log('paste', `已触发手势: ${action}`))
     .catch((e) => log('paste', '触发手势失败:', e.message))
@@ -207,18 +227,18 @@ function quitApp() {
 }
 
 function mouseMoveFallback(dx, dy) {
-  const x = Math.max(-500, Math.min(500, Math.round(Number(dx) || 0)))
-  const y = Math.max(-500, Math.min(500, Math.round(Number(dy) || 0)))
-  if (!x && !y) return
+  const x = Math.max(-500, Math.min(500, Number(dx) || 0))
+  const y = Math.max(-500, Math.min(500, Number(dy) || 0))
+  if (Math.abs(x) < 0.01 && Math.abs(y) < 0.01) return
   const script = `ObjC.import('CoreGraphics'); const e=$.CGEventCreate($()); const p=$.CGEventGetLocation(e); const ev=$.CGEventCreateMouseEvent($(), $.kCGEventMouseMoved, $.CGPointMake(p.x + ${x}, p.y + ${y}), 0); $.CGEventPost($.kCGHIDEventTap, ev);`
   execAsync('osascript', ['-l', 'JavaScript', '-e', script], { timeout: 2000 })
     .catch((e) => log('paste', '模拟鼠标移动失败:', e.message))
 }
 
 function mouseMove(dx, dy) {
-  const x = Math.max(-500, Math.min(500, Math.round(Number(dx) || 0)))
-  const y = Math.max(-500, Math.min(500, Math.round(Number(dy) || 0)))
-  if (!x && !y) return
+  const x = Math.max(-500, Math.min(500, Number(dx) || 0))
+  const y = Math.max(-500, Math.min(500, Number(dy) || 0))
+  if (Math.abs(x) < 0.01 && Math.abs(y) < 0.01) return
   if (mouseWrite(`M ${x} ${y}`)) return
   mouseMoveFallback(x, y)
 }

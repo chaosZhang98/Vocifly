@@ -64,6 +64,87 @@ function buildParameters(cfg, model) {
   return params
 }
 
+// ---- 连接预热 ----
+// 会话结束后预建下一个连接，下次说话直接复用，跳过「建连 + task-started」等待（云端首字延迟大头）。
+// 约束：DashScope 在 task-started 后约 23s 无音频会超时，故预热连接 TTL 取 15s，超时主动回收；
+// 且 context（历史上下文）只能在 run-task 时传入、之后不能补，故带 context 的会话不复用预热连接。
+const PREWARM_TTL_MS = 15000
+let prewarm = null // { ws, taskId, started, timer, model }
+
+function buildHeaders(cfg) {
+  const headers = { Authorization: `Bearer ${cfg.apiKey}`, 'user-agent': 'phvoice/0.1.0' }
+  if (cfg.workspaceId) headers['X-DashScope-WorkSpace'] = cfg.workspaceId
+  return headers
+}
+
+// 构造 run-task 帧（预热与真实会话共用，避免 payload 两处写漂移）
+function runTaskFrame(taskId, cfg, model, context) {
+  const input = Array.isArray(context) && context.length ? { context } : {}
+  return {
+    header: { action: 'run-task', task_id: taskId, streaming: 'duplex' },
+    payload: {
+      task_group: 'audio', task: 'asr', function: 'recognition', model,
+      parameters: buildParameters(cfg, model), input,
+    },
+  }
+}
+
+function dropPrewarm() {
+  if (!prewarm) return
+  if (prewarm.timer) clearTimeout(prewarm.timer)
+  try { prewarm.ws?.terminate() } catch {}
+  prewarm = null
+}
+
+function startPrewarm(cfg) {
+  if (prewarm) return
+  const model = cfg.model || 'qwen-audio-3.0-asr-flash-streaming'
+  const pw = { ws: null, taskId: uuid(), started: false, timer: null, model }
+  prewarm = pw
+  let ws
+  try {
+    ws = new WebSocket(cfg.gateway, { headers: buildHeaders(cfg), perMessageDeflate: false })
+  } catch {
+    dropPrewarm()
+    return
+  }
+  pw.ws = ws
+  ws.on('message', (data, isBinary) => {
+    if (prewarm !== pw || isBinary) return // 已被接手/回收则不处理
+    let msg
+    try { msg = JSON.parse(data.toString()) } catch { return }
+    const event = msg?.header?.event
+    if (event === 'task-started') {
+      pw.started = true
+      log('asr:bailian', '预热连接已就绪（下次说话直接复用）')
+      pw.timer = setTimeout(() => { log('asr:bailian', '预热连接超时未使用，回收'); dropPrewarm() }, PREWARM_TTL_MS)
+    } else if (event === 'task-failed' || event === 'task-finished') {
+      dropPrewarm()
+    }
+  })
+  ws.on('error', () => { if (prewarm === pw) dropPrewarm() })
+  ws.on('close', () => { if (prewarm === pw) dropPrewarm() })
+  ws.once('open', () => {
+    if (prewarm !== pw) return
+    try { ws.send(JSON.stringify(runTaskFrame(pw.taskId, cfg, model, null))) }
+    catch { dropPrewarm() }
+  })
+}
+
+// 接手已就绪的预热连接：改绑会话的消息/错误/关闭处理器，返回连接句柄；无可用预热则返回 null。
+function takePrewarm(cfg, onMessage, onError, onClose) {
+  if (!prewarm || !prewarm.started) return null
+  const model = cfg.model || 'qwen-audio-3.0-asr-flash-streaming'
+  if (prewarm.model !== model) { dropPrewarm(); return null } // 模型变了，预热参数不匹配
+  const pw = prewarm
+  prewarm = null
+  if (pw.timer) clearTimeout(pw.timer)
+  pw.ws.on('message', onMessage)
+  pw.ws.on('error', onError)
+  pw.ws.on('close', onClose)
+  return { ws: pw.ws, taskId: pw.taskId }
+}
+
 function isNoValidAudio(failed) {
   return !!(failed && failed.includes('NO_VALID_AUDIO_ERROR'))
 }
@@ -151,27 +232,17 @@ function createSession({ onPartial, onFinal, config, context }) {
       try { ws.terminate() } catch {}
       ws = null
     }
+    startPrewarm(cfg) // 会话结束预建下一连接，下次说话跳过建连
   }
 
   function sendControl(action) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     const model = cfg.model || 'qwen-audio-3.0-asr-flash-streaming'
-    const input = action === 'run-task' && Array.isArray(context) && context.length
-      ? { context }
-      : {}
-    ws.send(JSON.stringify({
-      header: { action, task_id: taskId, streaming: 'duplex' },
-      payload: action === 'run-task'
-        ? {
-            task_group: 'audio',
-            task: 'asr',
-            function: 'recognition',
-            model,
-            parameters: buildParameters(cfg, model),
-            input,
-          }
-        : { input: {} },
-    }))
+    ws.send(JSON.stringify(
+      action === 'run-task'
+        ? runTaskFrame(taskId, cfg, model, context)
+        : { header: { action, task_id: taskId, streaming: 'duplex' }, payload: { input: {} } },
+    ))
   }
 
   function requestStop() {
@@ -250,25 +321,27 @@ function createSession({ onPartial, onFinal, config, context }) {
     }
   }
 
+  function onWsError(error) {
+    log('asr:bailian', '连接错误:', error.message)
+    if (retryScheduled || scheduleRetry(error.message)) return
+    failed = failed || error.message
+    settleFinal()
+  }
+
+  function onWsClose() {
+    if (finished || retryScheduled) return
+    if (scheduleRetry('连接被关闭')) return
+    log('asr:bailian', '连接被关闭，按当前结果收尾')
+    settleFinal()
+  }
+
   async function connect() {
     try {
       taskId = uuid()
-      const headers = { Authorization: `Bearer ${cfg.apiKey}`, 'user-agent': 'phvoice/0.1.0' }
-      if (cfg.workspaceId) headers['X-DashScope-WorkSpace'] = cfg.workspaceId
-      ws = new WebSocket(cfg.gateway, { headers, perMessageDeflate: false })
+      ws = new WebSocket(cfg.gateway, { headers: buildHeaders(cfg), perMessageDeflate: false })
       ws.on('message', handleMessage)
-      ws.on('error', (error) => {
-        log('asr:bailian', '连接错误:', error.message)
-        if (retryScheduled || scheduleRetry(error.message)) return
-        failed = failed || error.message
-        settleFinal()
-      })
-      ws.on('close', () => {
-        if (finished || retryScheduled) return
-        if (scheduleRetry('连接被关闭')) return
-        log('asr:bailian', '连接被关闭，按当前结果收尾')
-        settleFinal()
-      })
+      ws.on('error', onWsError)
+      ws.on('close', onWsClose)
       await new Promise((resolve, reject) => {
         ws.once('open', resolve)
         ws.once('error', reject)
@@ -295,7 +368,17 @@ function createSession({ onPartial, onFinal, config, context }) {
       started = false
       stopRequested = false
       sessionStartAt = Date.now()
-      connect()
+      // 无历史上下文时优先复用预热连接（已 task-started），跳过建连；带 context 则需重建（context 只能在 run-task 时传）
+      const useContext = Array.isArray(context) && context.length > 0
+      const taken = !useContext ? takePrewarm(cfg, handleMessage, onWsError, onWsClose) : null
+      if (taken) {
+        ws = taken.ws
+        taskId = taken.taskId
+        started = true
+        log('asr:bailian', '复用预热连接，跳过建连')
+      } else {
+        connect()
+      }
     },
     pushAudio(buf) {
       if (finished || failed) return

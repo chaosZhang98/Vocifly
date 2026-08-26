@@ -1,5 +1,5 @@
 // PhVoice 服务端：手机网页 + WebSocket 音频流 + 本地 HTTPS
-// 有证书时：HTTPS 应用跑在 8443，HTTP 证书安装页跑在 8080
+// 有证书时：HTTPS 应用跑在 9899，HTTP 证书安装页跑在 9898（默认；均可被 PHVOICE_*_PORT 覆盖）
 // 无证书时：退回 HTTP 开发模式，仅适合 Mac 本机浏览器验证
 const http = require('http')
 const { X509Certificate } = require('crypto')
@@ -9,15 +9,18 @@ const path = require('path')
 const QRCode = require('qrcode')
 const { WebSocket, WebSocketServer } = require('ws')
 const asr = require('../infrastructure/asr') // AsrPort：离线 sherpa / 在线 bailian 分发
-const { config, getSettings, saveSettings } = require('../infrastructure/config')
+const { config, getSettings, saveSettings, effectiveVad } = require('../infrastructure/config')
 const appList = require('../infrastructure/platform/app-switcher') // 前台应用枚举
 const paster = require('../infrastructure/paste/mac-paster') // PastePort：mac 上屏
+const optimize = require('../infrastructure/optimize/bailian-optimize') // OptimizePort：百炼 qwen 文字优化
 const { SessionService } = require('../application/SessionService')
 const { ensureLocalCertificate, getLanIp, getLocalHostname } = require('./local-cert')
 const { buildMobileConfig } = require('./mobileconfig')
 const { log } = require('../infrastructure/logger')
 const usage = require('../infrastructure/usage')
 const paths = require('../infrastructure/paths')
+const pairing = require('../infrastructure/pairing') // 一次性配对码 + 持久设备令牌
+const modelDownload = require('../infrastructure/model-download') // 离线模型就绪检测 + 下载
 
 // ---- 设备命名持久化 ----
 // 手机端在 localStorage 里保存一个稳定的 deviceId（UUID），连接时通过 identify 握手上报。
@@ -43,15 +46,44 @@ function persistKnownDevices() {
   }
 }
 
-const HTTP_PORT = Number(process.env.PHVOICE_HTTP_PORT || 8080)
-const HTTPS_PORT = Number(process.env.PHVOICE_HTTPS_PORT || 8443)
+// 端口解析：环境变量（PHVOICE_*_PORT，优先）> config.json（可在控制面板改）> 内置默认。
+// 之所以做成函数而非模块级常量，是为了让「改端口→重启服务」时能读到新值，无需退出进程。
+function resolveHttpPort() {
+  const env = Number(process.env.PHVOICE_HTTP_PORT)
+  if (env) return env
+  const cfg = Number(config.httpPort)
+  if (cfg) return cfg
+  return 9898
+}
+function resolveHttpsPort() {
+  const env = Number(process.env.PHVOICE_HTTPS_PORT)
+  if (env) return env
+  const cfg = Number(config.httpsPort)
+  if (cfg) return cfg
+  return 9899
+}
 const WEB_DIR = path.join(__dirname, '..', '..', 'renderer')
 const ENABLE_PASTE = process.env.PHVOICE_PASTE !== '0'
 // 注：ASR 上下文构造（buildAsrContext）及 CONTEXT_MAX_TURNS/CHARS、PARTIAL_THROTTLE_MS 已随
 // A4 迁入 application/SessionService.js，此处不再保留。
 
 
-usage.init({ broadcastToPhones })
+usage.init({
+  broadcastToPhones,
+  // 预算超限自动降级是全局的：压过单台手机的「云端」模式选择 —— 清掉所有云端正计费的
+  // provider 覆盖（键盘模式的连接不录音不计费，保留其展示模式），并按连接重推 settings
+  //（手机端据此把输入模式切换器跳到「本地」）。
+  onAutoDowngrade: () => {
+    for (const wss of allWss) {
+      for (const client of wss.clients) {
+        if (client.sessionSvc && client.sessionSvc.providerOverride === 'bailian') {
+          client.sessionSvc.setInputMode(null)
+        }
+        if (client.readyState === 1 /* OPEN */) client.send(settingsPayloadFor(client))
+      }
+    }
+  },
+})
 
 
 // ---- 手机设备连接跟踪 ----
@@ -72,10 +104,12 @@ function getDevices() {
   return [...devices.values()].map((d) => {
     // 若本次连接未上报名字，但 knownDevices 里有历史名字，则回填，保证重连后名字不丢
     const known = d.deviceId ? knownDevices[d.deviceId] : null
+    const { getMode, ...rest } = d // getMode 是函数访问器，取值后剔除，避免随 payload 下发
     return {
-      ...d,
+      ...rest,
       name: d.name || (known && known.name) || '',
       platform: d.platform || (known && known.platform) || '未知设备',
+      mode: getMode ? getMode() : null, // 该连接当前的输入模式：cloud / local / keyboard
     }
   })
 }
@@ -193,7 +227,7 @@ async function renderMacPage(ctx) {
       <h1>PhVoice</h1>
       <p>把手机变成 Mac 的语音输入麦克风</p>
     </div>
-    <a class="settings" href="/settings">设置</a>
+    <a class="settings" href="/control">控制面板</a>
   </header>
   ${ctx.isSecure ? secureContent : insecureContent}
 
@@ -216,7 +250,7 @@ async function renderMacPage(ctx) {
         <small id="totalDetail">0 次 · 0.0 秒</small>
       </div>
     </div>
-    <p class="usage-note">当前使用 <strong id="providerName">—</strong>，单价 ¥<span id="pricePerSecond">0.000330</span>/秒，按音频时长计费。</p>
+    <p class="usage-note">默认引擎 <strong id="providerName">—</strong>（各手机可在对话页单独切换），单价 ¥<span id="pricePerSecond">0.000330</span>/秒，按音频时长计费。</p>
   </section>
 
   <script>
@@ -225,7 +259,7 @@ async function renderMacPage(ctx) {
         const res = await fetch('/api/stats', { cache: 'no-store' })
         if (!res.ok) return
         const s = await res.json()
-        document.getElementById('providerName').textContent = s.provider === 'bailian' ? '阿里云百炼（在线）' : 'sherpa（离线，免费）'
+        document.getElementById('providerName').textContent = s.provider === 'bailian' ? '阿里云百炼（云端）' : 'sherpa（本地，免费）'
         document.getElementById('pricePerSecond').textContent = s.pricePerSecond.toFixed(6)
         const last = s.last
         if (last) {
@@ -250,7 +284,7 @@ async function renderMacPage(ctx) {
 </html>`
 }
 
-const CONTROL_PATHS = ['/mac', '/settings', '/control', '/api/settings', '/api/stats', '/api/mac', '/api/app-quit', '/api/devices', '/api/export', '/api/logs']
+const CONTROL_PATHS = ['/mac', '/control', '/api/settings', '/api/stats', '/api/mac', '/api/app-quit', '/api/devices', '/api/export', '/api/logs', '/api/pair/rotate', '/api/login-item', '/api/model/status', '/api/model/download']
 
 // /api/health CORS 收紧：只给白名单内的 Origin 反射跨域头，避免任意站点随意探测。
 // 手机首次配置页（setupUrl）需要跨域 fetch /api/health 验证证书，因此必须纳入白名单。
@@ -272,6 +306,41 @@ function isAllowedHealthOrigin(origin, ctx) {
 }
 
 
+// 云端识别是否就绪（只认百炼 API Key 是否填写）。
+function cloudAvailable() {
+  return !!(config.asr && config.asr.bailian && config.asr.bailian.apiKey)
+}
+
+// 某个 provider 是否可用：bailian 看 Key，sherpa 看离线模型文件。供 SessionService 在 start
+// 时 fail-fast（手机端点了「说话」却两者都缺时，立即回弹框而非等结束才报错）。
+function providerAvailable(provider) {
+  return provider === 'bailian' ? cloudAvailable() : modelDownload.isModelAvailable()
+}
+
+// 组装一条 settings 消息。vad/provider 按连接计算：手机端「云端/本地」输入模式是
+// 每连接覆盖（ws.sessionSvc.effectiveProvider()），无会话（或未鉴权连接）时回退全局。
+function settingsPayloadFor(client, settings) {
+  const provider = (client && client.sessionSvc) ? client.sessionSvc.effectiveProvider() : config.asr.provider
+  const trackpad = (settings && settings.trackpad) || config.trackpad
+  // defaultInputMode：新手机（无本地偏好）默认进入的输入模式；compose：键盘通路参数（附件上限等）。
+  // optimize：优化模板只下发 {id,name}（手机端选择器用），提示词正文不出 Mac，按 promptId 回传。
+  // availability：手机端据此在「说话」前拦截不可用模式并弹框说明原因，避免先开麦再报错。
+  const optPool = (config.optimize && Array.isArray(config.optimize.pool)) ? config.optimize.pool : []
+  return JSON.stringify({
+    type: 'settings',
+    trackpad,
+    vad: effectiveVad(provider),
+    provider,
+    defaultInputMode: config.defaultInputMode,
+    compose: config.compose,
+    availability: { cloud: cloudAvailable(), offline: modelDownload.isModelAvailable() },
+    optimize: {
+      defaultId: config.optimize && config.optimize.defaultId,
+      pool: optPool.map((e) => ({ id: e.id, name: e.name })),
+    },
+  })
+}
+
 // 把触控板 + VAD 配置推给所有手机端：控制面板保存后，正在连接的手机立即生效（无需刷新重连）。
 function broadcastSettings(settings, ctx) {
   const servers = []
@@ -279,10 +348,9 @@ function broadcastSettings(settings, ctx) {
     if (ctx.wss) servers.push(ctx.wss)
     if (ctx.httpWss) servers.push(ctx.httpWss)
   }
-  const payload = JSON.stringify({ type: 'settings', trackpad: settings.trackpad, vad: settings.vad })
   for (const wss of servers) {
     for (const client of wss.clients) {
-      if (client.readyState === 1 /* OPEN */) client.send(payload)
+      if (client.readyState === 1 /* OPEN */) client.send(settingsPayloadFor(client, settings))
     }
   }
 }
@@ -312,6 +380,16 @@ function broadcastToPhones(payload) {
   }
 }
 
+// 进程内入口（如托盘菜单直接改 provider）改了全局配置后调用：
+// 向所有在线手机按连接重推 settings，跟随全局的手机即时生效。
+function broadcastSettingsToAll() {
+  for (const wss of allWss) {
+    for (const client of wss.clients) {
+      if (client.readyState === 1 /* OPEN */) client.send(settingsPayloadFor(client))
+    }
+  }
+}
+
 
 async function handleControlRoutes(req, res, ctx) {
   const urlPath = req.url.split('?')[0]
@@ -325,17 +403,30 @@ async function handleControlRoutes(req, res, ctx) {
   if (urlPath === '/api/settings') {
     if (req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-      res.end(JSON.stringify(getSettings()))
+      const settings = getSettings()
+      // 环境变量（PHVOICE_*_PORT）覆盖端口时，向面板报告实际生效端口（env > config > 默认），
+      // 避免显示值与实际监听端口不一致。
+      settings.httpPort = resolveHttpPort()
+      settings.httpsPort = resolveHttpsPort()
+      res.end(JSON.stringify(settings))
     } else if (req.method === 'POST') {
       try {
         const body = await readJsonBody(req)
+        const beforeHttp = resolveHttpPort()
+        const beforeHttps = resolveHttpsPort()
         const settings = saveSettings(body)
+        const portChanged = resolveHttpPort() !== beforeHttp || resolveHttpsPort() !== beforeHttps
         // 触控板/延时等配置改动后实时推给在线手机端，下次操作立即生效
         broadcastSettings(settings, ctx)
         // 手动保存配置视为一次“重新决策”，清除自动降级标记（下一次识别会按新预算重新评估）
         if (usage.resetAutoDowngraded()) { log('server', '已手动保存配置，重置费用自动降级标记') }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-        res.end(JSON.stringify({ ok: true, settings }))
+        res.end(JSON.stringify({ ok: true, settings, portChanged }))
+        // 端口变了：稍等本请求响应完成后，再让主进程重启服务监听新端口
+        if (portChanged && ctx.onServicesChanged) {
+          log('server', `端口已修改，安排重启服务: http=${resolveHttpPort()} https=${resolveHttpsPort()}`)
+          setTimeout(() => ctx.onServicesChanged(), 150)
+        }
       } catch (error) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
         res.end(JSON.stringify({ ok: false, error: error.message }))
@@ -347,9 +438,51 @@ async function handleControlRoutes(req, res, ctx) {
     return true
   }
 
+  // 开机自启：读取/切换 macOS 登录项。主进程通过 ctx 回调执行 Electron API（本面板仅 loopback）。
+  if (urlPath === '/api/login-item') {
+    if (req.method === 'GET') {
+      const state = ctx.getLaunchAtLoginState ? ctx.getLaunchAtLoginState() : false
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ ok: true, launchAtLogin: state }))
+      return true
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = await readJsonBody(req)
+        // enable 允许只传 true/false；接口统一校验成布尔
+        const enable = body ? !!body.launchAtLogin : false
+        const result = ctx.onLaunchAtLogin ? ctx.onLaunchAtLogin(enable) : { ok: false, error: '主进程未提供开机自启回调' }
+        res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify(result))
+        return true
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ ok: false, error: error.message }))
+        return true
+      }
+    }
+    res.writeHead(405)
+    res.end('method not allowed')
+    return true
+  }
+
   if (urlPath === '/api/stats' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
     res.end(JSON.stringify(usage.getUsageStats()))
+    return true
+  }
+
+  // 离线模型：状态查询（面板轮询进度）+ 触发下载（后台异步，立即返回 running 状态）。
+  if (urlPath === '/api/model/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify(modelDownload.getDownloadState()))
+    return true
+  }
+  if (urlPath === '/api/model/download' && req.method === 'POST') {
+    // fire-and-forget：downloadModel 内部同步置 running，立即回报状态；进度由面板轮询 status。
+    modelDownload.downloadModel().catch((error) => log('model', `下载启动异常: ${error.message}`))
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify(modelDownload.getDownloadState()))
     return true
   }
 
@@ -420,6 +553,9 @@ async function handleControlRoutes(req, res, ctx) {
     const phoneUrl = ctx.ipUrl || ctx.url
     const appQr = await QRCode.toDataURL(phoneUrl, { width: 440, margin: 1 })
     const setupQr = ctx.setupUrl ? await QRCode.toDataURL(ctx.setupUrl, { width: 440, margin: 1 }) : null
+    // 一次性配对码 + 剩余秒数：手机在首次配置页输入。控制面板按 pairCode/pairExpiresIn 读取。
+    // 只取一次，避免按过期边界取到两个码（极少见但没必要）。getCode 会惰性生成/续期同一码。
+    const pair = pairing.getCode()
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
     res.end(JSON.stringify({
       phoneUrl,
@@ -429,7 +565,16 @@ async function handleControlRoutes(req, res, ctx) {
       certReason: ctx.certReason || '',
       appQr,
       setupQr,
+      pairCode: pair.code,
+      pairExpiresIn: pair.expiresInSec,
     }))
+    return true
+  }
+
+  if (urlPath === '/api/pair/rotate' && req.method === 'POST') {
+    pairing.rotateCode()
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify({ ok: true, ...pairing.getCode() }))
     return true
   }
 
@@ -464,23 +609,38 @@ async function handleControlRoutes(req, res, ctx) {
     return true
   }
 
-  if (urlPath === '/settings') {
-    const file = path.join(WEB_DIR, 'settings.html')
-    if (!fs.existsSync(file)) {
-      res.writeHead(404)
-      res.end('not found')
-      return true
-    }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
-    fs.createReadStream(file).pipe(res)
+  return true
+}
+
+// /api/pair：手机在首次配置页输入一次性配对码，换取持久授权令牌。
+// 手机可达（非 loopback），所以挂在 serveApp（强制 HTTP 模式）与 serveCertificateSetup（证书模式 HTTP_PORT）两边，
+// 不放进 CONTROL_PATHS（那里会强制 loopback）。
+async function handlePairRequest(req, res, ctx) {
+  if (req.url.split('?')[0] !== '/api/pair') return false
+  // 非 POST（如 GET）此前直接 return false，而调用方已无条件 return，导致连接挂起无响应；这里显式回 405 结束请求。
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Allow: 'POST' })
+    res.end(JSON.stringify({ ok: false, error: '仅支持 POST 请求' }))
     return true
   }
-
+  try {
+    const body = await readJsonBody(req)
+    const result = pairing.useCode(body && body.code)
+    res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify(result))
+  } catch (error) {
+    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify({ ok: false, error: '无效请求: ' + error.message }))
+  }
   return true
 }
 
 function serveApp(req, res, ctx) {
   const urlPath = req.url.split('?')[0]
+  if (urlPath === '/api/pair') {
+    handlePairRequest(req, res, ctx).catch((error) => log('server', '/api/pair 失败:', error.message))
+    return
+  }
   if (urlPath === '/api/health') {
     const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
     // 仅在发起方 Origin 在白名单内时才反射 CORS；同源请求（控制面板）不携带 Origin，无需处理。
@@ -516,6 +676,18 @@ function serveApp(req, res, ctx) {
     res.end('not found')
     return
   }
+  // 把 HTTP 设置页端口注入 app.js（window.PHVOICE_SETUP_PORT），避免写死端口（默认 9898，可在控制面板改，可被 PHVOICE_HTTP_PORT 覆盖）。
+  // 手机端语音页在同一台 serveApp 上加载 app.js，注入的 window.PHVOICE_SETUP_PORT 同样生效。
+  if (filePath === '/app.js') {
+    const content = `window.PHVOICE_SETUP_PORT = ${ctx.httpPort};\n` + fs.readFileSync(file, 'utf8')
+    res.writeHead(200, {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      // 禁缓存：前端迭代期 Safari 可能拿旧 JS，导致代码改了却不生效
+      'Cache-Control': 'no-store',
+    })
+    res.end(content)
+    return
+  }
   res.writeHead(200, {
     'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
     // 禁缓存：前端迭代期 Safari 可能拿旧 JS，导致代码改了却不生效
@@ -534,125 +706,306 @@ function renderIosSetupPage(ctx) {
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>PhVoice 首次配置</title>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 28px 20px 40px; font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.65; }
-    main { max-width: 680px; margin: 0 auto; }
-    h1 { font-size: 25px; margin: 0 0 8px; }
-    h2 { font-size: 17px; margin: 28px 0 12px; }
-    p { margin: 6px 0; }
-    .intro { color: #666; margin-bottom: 22px; }
-    .step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; margin: 16px 0; }
-    .number { width: 28px; height: 28px; border-radius: 50%; background: #202124; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
-    .step strong { display: block; margin-bottom: 3px; }
-    .step p { color: #5f6368; }
-    .path { display: inline-block; margin-top: 5px; padding: 3px 8px; border-radius: 6px; background: #eceff1; color: #202124; font-size: 14px; }
-    a.button, button.button { display: block; width: 100%; margin: 18px 0; padding: 14px 16px; border: 0; border-radius: 10px; background: #2563eb; color: white; text-align: center; text-decoration: none; font-size: 16px; font-weight: 650; }
-    a.secondary, button.secondary { background: #202124; }
-    a.disabled { opacity: .45; pointer-events: none; }
-    .verify-status { margin: -8px 0 4px; padding: 11px 12px; border-radius: 8px; background: #eceff1; color: #5f6368; font-size: 14px; }
-    .verify-status.success { background: #e8f5ee; color: #137333; }
-    .verify-status.error { background: #fce8e6; color: #c5221f; }
-    .note { color: #666; font-size: 14px; margin-top: 18px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.6; min-height: 100dvh; }
+    .container { max-width: 480px; margin: 0 auto; padding: 32px 24px 48px; }
+
+    .progress { display: flex; align-items: center; justify-content: center; margin-bottom: 36px; }
+    .progress-dot { width: 36px; height: 36px; border-radius: 50%; background: #e0e0e0; color: #999; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; transition: all .3s ease; flex-shrink: 0; }
+    .progress-dot.active { background: #2563eb; color: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.2); }
+    .progress-dot.done { background: #16a34a; color: #fff; }
+    .progress-dot.done::after { content: '✓'; font-size: 18px; }
+    .progress-dot.done span { display: none; }
+    .progress-line { width: 48px; height: 3px; background: #e0e0e0; transition: background .3s ease; }
+    .progress-line.done { background: #16a34a; }
+    .progress-label { font-size: 12px; color: #999; text-align: center; margin-top: 6px; }
+    .progress-label.active { color: #2563eb; font-weight: 600; }
+    .progress-label.done { color: #16a34a; }
+
+    .panel { display: none; animation: fadeIn .3s ease; }
+    .panel.visible { display: block; }
+    /* 倒计时浮层：固定悬浮在配置页上方，内容透出，不替换配置页 */
+    #countdownPanel { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(247,247,248,.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 60; }
+    #countdownPanel.visible { display: flex; }
+    #countdownPanel .countdown { background: #fff; border-radius: 20px; padding: 26px 40px; box-shadow: 0 12px 40px rgba(37,99,235,.14); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .panel h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .panel .subtitle { color: #666; font-size: 15px; margin-bottom: 24px; }
+
+    .pair-input { width: 100%; padding: 14px; font-size: 28px; letter-spacing: 10px; text-align: center; border-radius: 12px; border: 2px solid #ddd; background: #fff; outline: none; transition: border-color .2s; }
+    .pair-input:focus { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+    .pair-input::placeholder { font-size: 15px; letter-spacing: 0; color: #bbb; }
+
+    .btn { display: block; width: 100%; padding: 15px 16px; border: 0; border-radius: 12px; font-size: 16px; font-weight: 650; cursor: pointer; text-align: center; text-decoration: none; touch-action: manipulation; transition: transform .1s, opacity .2s; }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-dark { background: #202124; color: #fff; }
+    .btn-green { background: #16a34a; color: #fff; }
+
+    .status { margin-top: 12px; padding: 12px 14px; border-radius: 10px; font-size: 14px; background: #f0f0f0; color: #666; }
+    .status.success { background: #e8f5ee; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    .cert-steps { margin: 20px 0; }
+    .cert-step { display: flex; gap: 14px; padding: 14px 0; }
+    .cert-step + .cert-step { border-top: 1px solid #eee; }
+    .cert-num { width: 28px; height: 28px; border-radius: 50%; background: #202124; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+    .cert-step-content strong { display: block; font-size: 15px; margin-bottom: 2px; }
+    .cert-step-content p { font-size: 14px; color: #666; }
+    .path { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 6px; background: #eceff1; font-size: 13px; color: #333; }
+    .note { font-size: 13px; color: #999; margin-top: 20px; }
     .note a { color: #2563eb; }
+
+    /* 倒计时过渡 */
+    .countdown { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 32px 0; }
+    .countdown-check { font-size: 48px; color: #16a34a; }
+    .countdown-text { font-size: 16px; color: #666; }
+    .countdown-ring { position: relative; width: 64px; height: 64px; }
+    .countdown-ring svg { transform: rotate(-90deg); }
+    .countdown-ring circle { fill: none; stroke-width: 4; }
+    .countdown-ring .bg { stroke: #e0e0e0; }
+    .countdown-ring .fg { stroke: #2563eb; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+    .countdown-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #2563eb; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>PhVoice 首次配置</h1>
-    <p class="intro">只需要在这台 iPhone 上配置一次。配置完成后，以后直接使用 PhVoice 的正常输入二维码。</p>
-
-    <h2>第一步：下载安装描述文件</h2>
-    <div class="step">
-      <span class="number">1</span>
-      <div>
-        <strong>点击下方按钮</strong>
-        <p>Safari 会提示“此网站正尝试下载一个配置描述文件”，请点“允许”。</p>
+  <div class="container">
+    <div class="progress">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="progress-dot active" id="prog1"><span>1</span></div>
+        <div class="progress-label active" id="progLabel1">配对</div>
       </div>
-    </div>
-    <a class="button" href="/phvoice-ca.mobileconfig">下载安装描述文件</a>
-
-    <h2>第二步：安装描述文件</h2>
-    <div class="step">
-      <span class="number">2</span>
-      <div>
-        <strong>进入 iPhone 的“VPN 与设备管理”</strong>
-        <span class="path">设置 &gt; 通用 &gt; VPN 与设备管理</span>
-        <p>在“已下载的描述文件”下面找到 <strong>PhVoice 本地证书</strong>，点进去并选择“安装”。</p>
+      <div class="progress-line" id="progLine1"></div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="progress-dot" id="prog2"><span>2</span></div>
+        <div class="progress-label" id="progLabel2">证书</div>
+      </div>
+      <div class="progress-line" id="progLine2"></div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="progress-dot" id="prog3"><span>3</span></div>
+        <div class="progress-label" id="progLabel3">进入</div>
       </div>
     </div>
 
-    <h2>第三步：信任根证书</h2>
-    <div class="step">
-      <span class="number">3</span>
-      <div>
-        <strong>打开 PhVoice 根证书开关</strong>
-        <span class="path">设置 &gt; 通用 &gt; 关于本机 &gt; 证书信任设置</span>
-        <p>启用“PhVoice 本地根证书”。如果这里还是空的，说明第二步还没有安装成功。</p>
-      </div>
+    <div class="panel visible" id="step1">
+      <h2>输入配对码</h2>
+      <p class="subtitle">打开 Mac 上 PhVoice 的「接入设备」面板，查看 6 位配对码</p>
+      <input class="pair-input" id="pairCode" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*" placeholder="6 位数字" autocomplete="one-time-code"/>
+      <button class="btn btn-primary" id="pairBtn" style="margin-top:16px">验证配对码</button>
+      <div class="status" id="pairStatus">输入 Mac 上显示的 6 位配对码</div>
     </div>
 
-    <h2>第四步：验证并进入</h2>
-    <div class="step">
-      <span class="number">4</span>
-      <div>
-        <strong>回到本页验证</strong>
-        <p>验证通过后，再进入 PhVoice 语音输入。</p>
+    <div class="panel" id="step2">
+      <h2>安装证书</h2>
+      <p class="subtitle">需要安装本地证书才能使用麦克风，只需一次</p>
+      <div class="cert-steps">
+        <div class="cert-step">
+          <span class="cert-num">1</span>
+          <div class="cert-step-content">
+            <strong>下载描述文件</strong>
+            <p>Safari 会提示下载配置描述文件，点"允许"</p>
+          </div>
+        </div>
+        <div class="cert-step">
+          <span class="cert-num">2</span>
+          <div class="cert-step-content">
+            <strong>安装描述文件</strong>
+            <span class="path">设置 → 通用 → VPN 与设备管理</span>
+            <p>找到 <strong>PhVoice 本地证书</strong>，点进去安装</p>
+          </div>
+        </div>
+        <div class="cert-step">
+          <span class="cert-num">3</span>
+          <div class="cert-step-content">
+            <strong>信任根证书</strong>
+            <span class="path">设置 → 通用 → 关于本机 → 证书信任设置</span>
+            <p>启用 <strong>PhVoice 本地根证书</strong> 开关</p>
+          </div>
+        </div>
+      </div>
+      <a class="btn btn-primary" href="/phvoice-ca.mobileconfig">下载描述文件</a>
+      <button class="btn btn-dark" id="verifyBtn" style="margin-top:10px">我已完成安装，验证</button>
+      <div class="status" id="certStatus">完成上面三步后，点击验证</div>
+      <p class="note">没看到描述文件？<a href="/phvoice-ca.pem">下载 PEM 备用文件</a></p>
+    </div>
+
+    <div class="panel" id="step3">
+      <h2>准备就绪</h2>
+      <p class="subtitle">配对和证书都已完成</p>
+      <a class="btn btn-green" id="openApp" href="#">进入 PhVoice</a>
+    </div>
+
+    <!-- 倒计时过渡面板（复用） -->
+    <div class="panel" id="countdownPanel">
+      <div class="countdown">
+        <div class="countdown-check">✓</div>
+        <div class="countdown-text" id="countdownText"></div>
+        <div class="countdown-ring">
+          <svg width="64" height="64" viewBox="0 0 64 64">
+            <circle class="bg" cx="32" cy="32" r="28"/>
+            <circle class="fg" id="countdownCircle" cx="32" cy="32" r="28" stroke-dasharray="175.93" stroke-dashoffset="0"/>
+          </svg>
+          <div class="countdown-num" id="countdownNum">3</div>
+        </div>
       </div>
     </div>
-    <button id="verifyButton" class="button" type="button">验证安装</button>
-    <p id="verifyStatus" class="verify-status">尚未验证。请先完成上面的安装和信任步骤。</p>
-    <a id="openApp" class="button secondary disabled" aria-disabled="true" href="${ctx.url}">打开 PhVoice 语音输入</a>
+  </div>
 
-    <p class="note">如果没有看到“已下载的描述文件”，请回到第一步重新下载。也可以<a href="/phvoice-ca.pem">下载 PEM 备用文件</a>。</p>
-  </main>
   <script>
-    const appUrl = ${appUrlLiteral}
-    const ipUrl = ${ipUrlLiteral}
-    const verifyButton = document.getElementById('verifyButton')
-    const verifyStatus = document.getElementById('verifyStatus')
-    const openApp = document.getElementById('openApp')
+    var appUrl = ${appUrlLiteral}
+    var ipUrl = ${ipUrlLiteral}
+    var pairToken = null
+    var CIRC = 2 * Math.PI * 28
 
-    // 带超时的探测：mDNS 解析卡住时 fetch 会无限挂起，必须主动掐断
-    async function probe(url, timeoutMs) {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
-      try {
-        const response = await fetch(url + '/api/health', { cache: 'no-store', signal: controller.signal })
-        if (!response.ok) return { ok: false, reason: 'HTTP ' + response.status }
-        return { ok: true }
-      } catch (error) {
-        return { ok: false, reason: error.name === 'AbortError' ? '超时' : '连接失败' }
-      } finally {
-        clearTimeout(timer)
+    function setProgress(n) {
+      for (var i = 1; i <= 3; i++) {
+        var dot = document.getElementById('prog' + i)
+        var label = document.getElementById('progLabel' + i)
+        dot.className = 'progress-dot' + (i < n ? ' done' : i === n ? ' active' : '')
+        label.className = 'progress-label' + (i < n ? ' done' : i === n ? ' active' : '')
+        if (i < 3) document.getElementById('progLine' + i).className = 'progress-line' + (i < n ? ' done' : '')
       }
     }
 
-    async function verifyInstall() {
-      verifyButton.disabled = true
-      verifyStatus.className = 'verify-status'
-      verifyStatus.textContent = '正在验证（最多约 6 秒）…'
-      // 域名走 mDNS 广播，在部分网络环境（合盖、路由器组播策略）下会解析失败；
-      // IP 直连不依赖 mDNS，证书 SAN 已覆盖，一样受信任
-      const results = await Promise.all([
-        probe(appUrl, 5000).then((r) => ({ label: '域名', url: appUrl, ...r })),
-        probe(ipUrl, 5000).then((r) => ({ label: 'IP 直连', url: ipUrl, ...r })),
-      ])
-      const okCandidate = results.find((r) => r.ok)
-      const detail = results.map((r) => r.label + (r.ok ? ' 成功' : ' ' + r.reason)).join('；')
-      if (okCandidate) {
-        verifyStatus.className = 'verify-status success'
-        verifyStatus.textContent = '验证通过（' + detail + '），可以进入 PhVoice。'
-        openApp.href = okCandidate.url
-        openApp.classList.remove('disabled')
-        openApp.removeAttribute('aria-disabled')
-      } else {
-        verifyStatus.className = 'verify-status error'
-        verifyStatus.textContent = '还没有验证通过（' + detail + '）。请确认描述文件已安装并信任，且手机与 Mac 连接同一 Wi-Fi。'
-      }
-      verifyButton.disabled = false
+    function showPanel(id) {
+      var panels = document.querySelectorAll('.panel')
+      for (var i = 0; i < panels.length; i++) panels[i].classList.remove('visible')
+      document.getElementById(id).classList.add('visible')
     }
 
-    verifyButton.addEventListener('click', verifyInstall)
+    function countdown(seconds, text, onDone) {
+      // 防重入：自动探测/配对/证书检查/手动验证等触发点可能在 3 秒窗口内先后到来，
+      // 共用一个 #countdownPanel/#countdownNum/#countdownCircle。若已有倒计时在跑，
+      // 先清掉旧的，避免数字跳变、圆环闪烁、onDone 重复执行（重复跳转/导航）。
+      if (countdown._iv) { clearInterval(countdown._iv); countdown._iv = null }
+      var cd = document.getElementById('countdownPanel')
+      var num = document.getElementById('countdownNum')
+      var circle = document.getElementById('countdownCircle')
+      var txt = document.getElementById('countdownText')
+      txt.textContent = text
+      num.textContent = seconds
+      circle.style.strokeDashoffset = '0'
+      // 倒计时作为浮层叠在当前配置页上方，不隐藏配置内容：让步骤「停在页面上」等 3 秒
+      cd.classList.add('visible')
+      var remaining = seconds
+      countdown._iv = setInterval(function () {
+        remaining--
+        if (remaining <= 0) {
+          clearInterval(countdown._iv); countdown._iv = null
+          cd.classList.remove('visible')
+          onDone()
+          return
+        }
+        num.textContent = remaining
+        circle.style.strokeDashoffset = String(CIRC * (1 - remaining / seconds))
+      }, 1000)
+    }
+
+    function enterApp() {
+      var href = document.getElementById('openApp').href
+      if (href && href !== '#') location.href = href
+    }
+
+    function goStep(n) {
+      setProgress(n)
+      showPanel('step' + n)
+      if (n === 3) {
+        // 步骤 3「进入」：同样停 3 秒后自动进入触控板页面（按钮仍可手动点）
+        document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
+        countdown(3, '准备就绪，即将进入 PhVoice', enterApp)
+      }
+    }
+
+    // 启动：探测证书是否已信任
+    ;(function () {
+      var target = ipUrl || appUrl
+      var ctrl = new AbortController()
+      var t = setTimeout(function () { ctrl.abort() }, 3000)
+      fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
+        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 PhVoice', function () { location.href = target }) } })
+        .catch(function () { clearTimeout(t) })
+    })()
+
+    // 步骤 1：配对
+    var pairBtn = document.getElementById('pairBtn')
+    var pairInput = document.getElementById('pairCode')
+    var pairStatus = document.getElementById('pairStatus')
+    pairInput.addEventListener('input', function () { this.value = this.value.replace(/\\D/g, '').slice(0, 6) })
+    pairInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doPair() })
+    pairBtn.addEventListener('click', doPair)
+    function doPair() {
+      var code = pairInput.value.trim()
+      if (!/^[0-9]{6}$/.test(code)) { pairStatus.className = 'status error'; pairStatus.textContent = '请输入 6 位数字'; return }
+      pairBtn.disabled = true
+      pairStatus.className = 'status'
+      pairStatus.textContent = '验证中…'
+      fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) })
+        .then(function (r) { return r.json() })
+        .then(function (data) {
+          if (data.ok && data.token) {
+            pairToken = data.token
+            pairStatus.className = 'status success'
+            pairStatus.textContent = '配对成功 ✓'
+            countdown(3, '配对成功，即将进入下一步', function () { goStep(2); checkCert() })
+          } else {
+            pairStatus.className = 'status error'
+            pairStatus.textContent = data.error === 'code_invalid' ? '配对码不正确或已过期' : (data.message || data.error || '配对失败')
+            pairInput.value = ''
+            pairInput.focus()
+          }
+        })
+        .catch(function (e) {
+          pairStatus.className = 'status error'
+          pairStatus.textContent = '网络错误：' + e.message
+        })
+        .finally(function () { pairBtn.disabled = false })
+    }
+
+    // 步骤 2：检查证书 + 验证
+    function checkCert() {
+      var target = ipUrl || appUrl
+      var ctrl = new AbortController()
+      var t = setTimeout(function () { ctrl.abort() }, 4000)
+      fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
+        .then(function (r) { clearTimeout(t); if (r.ok) return { ok: true }; return { ok: false } })
+        .catch(function () { clearTimeout(t); return { ok: false } })
+        .then(function (result) {
+          if (result.ok) {
+            var certStatus = document.getElementById('certStatus')
+            certStatus.className = 'status success'
+            certStatus.textContent = '证书已安装 ✓'
+            document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
+            countdown(3, '证书已就绪，即将进入 PhVoice', function () { goStep(3) })
+          }
+        })
+    }
+
+    var verifyBtn = document.getElementById('verifyBtn')
+    var certStatus = document.getElementById('certStatus')
+    verifyBtn.addEventListener('click', function () {
+      verifyBtn.disabled = true
+      certStatus.className = 'status'
+      certStatus.textContent = '正在验证…'
+      var target = ipUrl || appUrl
+      var ctrl = new AbortController()
+      var t = setTimeout(function () { ctrl.abort() }, 6000)
+      fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
+        .then(function (r) { clearTimeout(t); return r.ok ? { ok: true } : { ok: false, reason: 'HTTP ' + r.status } })
+        .catch(function () { clearTimeout(t); return { ok: false, reason: '连接失败' } })
+        .then(function (result) {
+          if (result.ok) {
+            certStatus.className = 'status success'
+            certStatus.textContent = '证书验证通过 ✓'
+            document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
+            countdown(3, '证书验证通过，即将进入 PhVoice', function () { goStep(3) })
+          } else {
+            certStatus.className = 'status error'
+            certStatus.textContent = '验证失败（' + result.reason + '）。请确认描述文件已安装并信任。'
+          }
+          verifyBtn.disabled = false
+        })
+    })
   </script>
 </body>
 </html>`
@@ -668,175 +1021,324 @@ function renderAndroidSetupPage(ctx) {
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>PhVoice 首次配置</title>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 28px 20px 40px; font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.65; }
-    main { max-width: 680px; margin: 0 auto; }
-    h1 { font-size: 25px; margin: 0 0 8px; }
-    h2 { font-size: 17px; margin: 28px 0 12px; }
-    p { margin: 6px 0; }
-    .intro { color: #666; margin-bottom: 22px; }
-    .callout { margin: 0 0 20px; padding: 12px 14px; border-radius: 10px; background: #fff7e6; border: 1px solid #f2c94c; color: #7a5a00; font-size: 15px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.6; min-height: 100dvh; }
+    .container { max-width: 480px; margin: 0 auto; padding: 32px 24px 48px; }
+
+    .progress { display: flex; align-items: center; justify-content: center; margin-bottom: 36px; }
+    .progress-dot { width: 36px; height: 36px; border-radius: 50%; background: #e0e0e0; color: #999; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; transition: all .3s ease; flex-shrink: 0; }
+    .progress-dot.active { background: #2563eb; color: #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.2); }
+    .progress-dot.done { background: #16a34a; color: #fff; }
+    .progress-dot.done::after { content: '✓'; font-size: 18px; }
+    .progress-dot.done span { display: none; }
+    .progress-line { width: 48px; height: 3px; background: #e0e0e0; transition: background .3s ease; }
+    .progress-line.done { background: #16a34a; }
+    .progress-label { font-size: 12px; color: #999; text-align: center; margin-top: 6px; }
+    .progress-label.active { color: #2563eb; font-weight: 600; }
+    .progress-label.done { color: #16a34a; }
+
+    .panel { display: none; animation: fadeIn .3s ease; }
+    .panel.visible { display: block; }
+    /* 倒计时浮层：固定悬浮在配置页上方，内容透出，不替换配置页 */
+    #countdownPanel { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(247,247,248,.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 60; }
+    #countdownPanel.visible { display: flex; }
+    #countdownPanel .countdown { background: #fff; border-radius: 20px; padding: 26px 40px; box-shadow: 0 12px 40px rgba(37,99,235,.14); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .panel h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .panel .subtitle { color: #666; font-size: 15px; margin-bottom: 24px; }
+
+    .pair-input { width: 100%; padding: 14px; font-size: 28px; letter-spacing: 10px; text-align: center; border-radius: 12px; border: 2px solid #ddd; background: #fff; outline: none; transition: border-color .2s; }
+    .pair-input:focus { border-color: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+    .pair-input::placeholder { font-size: 15px; letter-spacing: 0; color: #bbb; }
+
+    .btn { display: block; width: 100%; padding: 15px 16px; border: 0; border-radius: 12px; font-size: 16px; font-weight: 650; cursor: pointer; text-align: center; text-decoration: none; touch-action: manipulation; transition: transform .1s, opacity .2s; }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-dark { background: #202124; color: #fff; }
+    .btn-green { background: #16a34a; color: #fff; }
+
+    .status { margin-top: 12px; padding: 12px 14px; border-radius: 10px; font-size: 14px; background: #f0f0f0; color: #666; white-space: pre-wrap; word-break: break-word; }
+    .status.success { background: #e8f5ee; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+    .status.warn { background: #fff7e6; color: #7a5a00; }
+
+    .callout { margin: 0 0 20px; padding: 12px 14px; border-radius: 10px; background: #fff7e6; border: 1px solid #f2c94c; color: #7a5a00; font-size: 14px; }
     .callout strong { color: #4a3200; }
-    .step { display: grid; grid-template-columns: 30px 1fr; gap: 12px; margin: 16px 0; }
-    .number { width: 28px; height: 28px; border-radius: 50%; background: #202124; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
-    .step strong { display: block; margin-bottom: 3px; }
-    .step p { color: #5f6368; }
-    .path { display: inline-block; margin-top: 5px; padding: 3px 8px; border-radius: 6px; background: #eceff1; color: #202124; font-size: 14px; }
-    a.button, button.button { display: block; width: 100%; margin: 18px 0; padding: 14px 16px; border: 0; border-radius: 10px; background: #2563eb; color: white; text-align: center; text-decoration: none; font-size: 16px; font-weight: 650; }
-    a.secondary, button.secondary { background: #202124; }
-    a.disabled { opacity: .45; pointer-events: none; }
-    .verify-status { margin: -8px 0 4px; padding: 11px 12px; border-radius: 8px; background: #eceff1; color: #5f6368; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-    .verify-status.success { background: #e8f5ee; color: #137333; }
-    .verify-status.error { background: #fce8e6; color: #c5221f; }
-    .verify-status.warn { background: #fff7e6; color: #7a5a00; }
-    .diag { margin: 8px 0 4px; padding: 10px 12px; border-radius: 8px; background: #f4f5f6; color: #444; font-size: 13px; font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
-    .note { color: #666; font-size: 14px; margin-top: 18px; }
+
+    .cert-steps { margin: 20px 0; }
+    .cert-step { display: flex; gap: 14px; padding: 14px 0; }
+    .cert-step + .cert-step { border-top: 1px solid #eee; }
+    .cert-num { width: 28px; height: 28px; border-radius: 50%; background: #202124; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+    .cert-step-content strong { display: block; font-size: 15px; margin-bottom: 2px; }
+    .cert-step-content p { font-size: 14px; color: #666; }
+    .path { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 6px; background: #eceff1; font-size: 13px; color: #333; }
+    .note { font-size: 13px; color: #999; margin-top: 20px; }
     .note a { color: #2563eb; }
+
+    .countdown { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 32px 0; }
+    .countdown-check { font-size: 48px; color: #16a34a; }
+    .countdown-text { font-size: 16px; color: #666; }
+    .countdown-ring { position: relative; width: 64px; height: 64px; }
+    .countdown-ring svg { transform: rotate(-90deg); }
+    .countdown-ring circle { fill: none; stroke-width: 4; }
+    .countdown-ring .bg { stroke: #e0e0e0; }
+    .countdown-ring .fg { stroke: #2563eb; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+    .countdown-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #2563eb; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>PhVoice 首次配置</h1>
-    <p class="intro">只需要在这台安卓手机 / 平板上配置一次。配置完成后，以后直接使用 PhVoice 的正常输入二维码。</p>
-
-    <div class="callout">
-      <strong>重要：请用「Chrome」浏览器打开本页完成验证。</strong> 安卓系统默认只信任“用户 CA 证书”，部分国产浏览器或应用内嵌页面不会信任它，会导致“证书已装好但验证仍失败”。如果这一步用自带浏览器验证不通过，请装一个 Chrome 并在此重新打开本页。
-    </div>
-
-    <h2>第一步：下载证书</h2>
-    <div class="step">
-      <span class="number">1</span>
-      <div>
-        <strong>点击下方按钮下载 CA 证书</strong>
-        <p>浏览器会下载 <strong>phvoice-ca.crt</strong>，一般会保存在系统的“下载”文件夹。</p>
+  <div class="container">
+    <div class="progress">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="progress-dot active" id="prog1"><span>1</span></div>
+        <div class="progress-label active" id="progLabel1">配对</div>
       </div>
-    </div>
-    <a class="button" href="/phvoice-ca.crt">下载 CA 证书</a>
-
-    <h2>第二步：安装为 CA 证书</h2>
-    <div class="step">
-      <span class="number">2</span>
-      <div>
-        <strong>进入系统设置，安装证书</strong>
-        <span class="path">设置 &gt; 安全 &gt; 加密与凭据 &gt; 安装证书 &gt; CA 证书</span>
-        <p>不同品牌入口可能不同，部分手机在「设置 &gt; 密码与安全 &gt; 加密与凭据 &gt; 从存储设备安装证书」下。这里务必选择 <strong>“CA 证书”</strong>，不要选“VPN 和应用用户证书”。</p>
+      <div class="progress-line" id="progLine1"></div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="progress-dot" id="prog2"><span>2</span></div>
+        <div class="progress-label" id="progLabel2">证书</div>
+      </div>
+      <div class="progress-line" id="progLine2"></div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="progress-dot" id="prog3"><span>3</span></div>
+        <div class="progress-label" id="progLabel3">进入</div>
       </div>
     </div>
 
-    <h2>第三步：选择刚下载的证书</h2>
-    <div class="step">
-      <span class="number">3</span>
-      <div>
-        <strong>选择 phvoice-ca.crt</strong>
-        <p>在文件选择器里找到“下载”目录中的 <strong>phvoice-ca.crt</strong> 并打开。若系统提示“可能带来风险”，请选择<strong>仍然安装</strong>。</p>
-      </div>
+    <div class="panel visible" id="step1">
+      <h2>输入配对码</h2>
+      <p class="subtitle">打开 Mac 上 PhVoice 的「接入设备」面板，查看 6 位配对码</p>
+      <input class="pair-input" id="pairCode" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*" placeholder="6 位数字" autocomplete="one-time-code"/>
+      <button class="btn btn-primary" id="pairBtn" style="margin-top:16px">验证配对码</button>
+      <div class="status" id="pairStatus">输入 Mac 上显示的 6 位配对码</div>
     </div>
 
-    <h2>第四步：确认已被系统信任</h2>
-    <div class="step">
-      <span class="number">4</span>
-      <div>
-        <strong>去“受信任的凭据”里确认</strong>
-        <span class="path">设置 &gt; 加密与凭据 &gt; 受信任的凭据 &gt; 用户</span>
-        <p>应能看到一条以 <strong>“mkcert …”</strong> 命名的证书，且右侧开关处于<strong>打开</strong>状态。如果这里看不到，说明第二步选错了类型，请回到第二步重新选择<strong>“CA 证书”</strong>。</p>
+    <div class="panel" id="step2">
+      <h2>安装证书</h2>
+      <p class="subtitle">需要安装本地证书才能使用麦克风，只需一次</p>
+      <div class="callout">
+        <strong>请用 Chrome 浏览器完成此步骤。</strong> 部分国产浏览器不信任用户 CA 证书，会导致验证失败。
       </div>
+      <div class="cert-steps">
+        <div class="cert-step">
+          <span class="cert-num">1</span>
+          <div class="cert-step-content">
+            <strong>下载 CA 证书</strong>
+            <p>点击下方按钮，浏览器会下载 phvoice-ca.crt</p>
+          </div>
+        </div>
+        <div class="cert-step">
+          <span class="cert-num">2</span>
+          <div class="cert-step-content">
+            <strong>安装为 CA 证书</strong>
+            <span class="path">设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书</span>
+            <p>务必选择 <strong>"CA 证书"</strong>，不要选"VPN 和应用用户证书"</p>
+          </div>
+        </div>
+        <div class="cert-step">
+          <span class="cert-num">3</span>
+          <div class="cert-step-content">
+            <strong>选择 phvoice-ca.crt</strong>
+            <p>在"下载"目录找到文件并打开，提示风险时选"仍然安装"</p>
+          </div>
+        </div>
+        <div class="cert-step">
+          <span class="cert-num">4</span>
+          <div class="cert-step-content">
+            <strong>确认信任</strong>
+            <span class="path">设置 → 加密与凭据 → 受信任的凭据 → 用户</span>
+            <p>应能看到 “mkcert …” 证书且开关已开</p>
+          </div>
+        </div>
+      </div>
+      <a class="btn btn-primary" href="/phvoice-ca.crt">下载 CA 证书</a>
+      <button class="btn btn-dark" id="verifyBtn" style="margin-top:10px">我已完成安装，验证</button>
+      <div class="status" id="certStatus">完成上面步骤后，点击验证</div>
+      <p class="note">格式无效？<a href="/phvoice-ca.pem">下载 PEM 备用文件</a> 并重命名为 .cer</p>
     </div>
 
-    <h2>第五步：验证并进入</h2>
-    <div class="step">
-      <span class="number">5</span>
-      <div>
-        <strong>回到本页验证</strong>
-        <p>验证通过后，再进入 PhVoice 语音输入。</p>
+    <div class="panel" id="step3">
+      <h2>准备就绪</h2>
+      <p class="subtitle">配对和证书都已完成</p>
+      <a class="btn btn-green" id="openApp" href="#">进入 PhVoice</a>
+    </div>
+
+    <div class="panel" id="countdownPanel">
+      <div class="countdown">
+        <div class="countdown-check">✓</div>
+        <div class="countdown-text" id="countdownText"></div>
+        <div class="countdown-ring">
+          <svg width="64" height="64" viewBox="0 0 64 64">
+            <circle class="bg" cx="32" cy="32" r="28"/>
+            <circle class="fg" id="countdownCircle" cx="32" cy="32" r="28" stroke-dasharray="175.93" stroke-dashoffset="0"/>
+          </svg>
+          <div class="countdown-num" id="countdownNum">3</div>
+        </div>
       </div>
     </div>
-    <button id="verifyButton" class="button" type="button">验证安装</button>
-    <p id="verifyStatus" class="verify-status">尚未验证。请先完成上面的安装和信任步骤。</p>
-    <pre id="diag" class="diag" style="display:none"></pre>
-    <a id="openApp" class="button secondary" href="${ctx.ipUrl}">打开 PhVoice 语音输入</a>
+  </div>
 
-    <p class="note">本页下载的 <strong>phvoice-ca.crt</strong> 已转换成 Android 安装所需的 <strong>DER</strong> 编码；若浏览器直接显示证书文本，请长按链接选择“下载链接”。如系统仍提示“证书格式无效”，可下载 <a href="/phvoice-ca.pem">phvoice-ca.pem 备用文件</a> 并重命名为 phvoice-ca.cer 再安装（仅个别旧系统）。</p>
-  </main>
   <script>
-    const appUrl = ${appUrlLiteral}
-    const ipUrl = ${ipUrlLiteral}
-    const verifyButton = document.getElementById('verifyButton')
-    const verifyStatus = document.getElementById('verifyStatus')
-    const diag = document.getElementById('diag')
-    const openApp = document.getElementById('openApp')
+    var appUrl = ${appUrlLiteral}
+    var ipUrl = ${ipUrlLiteral}
+    var pairToken = null
+    var CIRC = 2 * Math.PI * 28
 
-    function classifyFailure(error, elapsedMs) {
-      if (error && error.name === 'AbortError') {
-        return { kind: 'timeout', reason: '超时（长时间未响应）' }
-      }
-      const fast = typeof elapsedMs === 'number' && elapsedMs >= 0 && elapsedMs < 2000
-      return {
-        kind: fast ? 'cert' : 'network',
-        reason: fast ? '连接失败（疑似证书未被当前浏览器信任）' : '连接失败'
+    function setProgress(n) {
+      for (var i = 1; i <= 3; i++) {
+        var dot = document.getElementById('prog' + i)
+        var label = document.getElementById('progLabel' + i)
+        dot.className = 'progress-dot' + (i < n ? ' done' : i === n ? ' active' : '')
+        label.className = 'progress-label' + (i < n ? ' done' : i === n ? ' active' : '')
+        if (i < 3) document.getElementById('progLine' + i).className = 'progress-line' + (i < n ? ' done' : '')
       }
     }
 
-    async function probe(url, timeoutMs) {
-      const controller = new AbortController()
-      const start = performance.now()
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
-      try {
-        const response = await fetch(url + '/api/health', { cache: 'no-store', signal: controller.signal })
-        const elapsedMs = Math.round(performance.now() - start)
-        if (!response.ok) return { ok: false, kind: 'http', reason: 'HTTP ' + response.status, elapsedMs }
-        return { ok: true, kind: 'ok', reason: '成功', elapsedMs }
-      } catch (error) {
-        const elapsedMs = Math.round(performance.now() - start)
-        const f = classifyFailure(error, elapsedMs)
-        return { ok: false, kind: f.kind, reason: f.reason + ' (' + elapsedMs + 'ms)', elapsedMs }
-      } finally {
-        clearTimeout(timer)
+    function showPanel(id) {
+      var panels = document.querySelectorAll('.panel')
+      for (var i = 0; i < panels.length; i++) panels[i].classList.remove('visible')
+      document.getElementById(id).classList.add('visible')
+    }
+
+    function countdown(seconds, text, onDone) {
+      // 防重入：自动探测/配对/证书检查/手动验证等触发点可能在 3 秒窗口内先后到来，
+      // 共用一个 #countdownPanel/#countdownNum/#countdownCircle。若已有倒计时在跑，
+      // 先清掉旧的，避免数字跳变、圆环闪烁、onDone 重复执行（重复跳转/导航）。
+      if (countdown._iv) { clearInterval(countdown._iv); countdown._iv = null }
+      var cd = document.getElementById('countdownPanel')
+      var num = document.getElementById('countdownNum')
+      var circle = document.getElementById('countdownCircle')
+      var txt = document.getElementById('countdownText')
+      txt.textContent = text
+      num.textContent = seconds
+      circle.style.strokeDashoffset = '0'
+      // 倒计时作为浮层叠在当前配置页上方，不隐藏配置内容：让步骤「停在页面上」等 3 秒
+      cd.classList.add('visible')
+      var remaining = seconds
+      countdown._iv = setInterval(function () {
+        remaining--
+        if (remaining <= 0) {
+          clearInterval(countdown._iv); countdown._iv = null
+          cd.classList.remove('visible')
+          onDone()
+          return
+        }
+        num.textContent = remaining
+        circle.style.strokeDashoffset = String(CIRC * (1 - remaining / seconds))
+      }, 1000)
+    }
+
+    function enterApp() {
+      var href = document.getElementById('openApp').href
+      if (href && href !== '#') location.href = href
+    }
+
+    function goStep(n) {
+      setProgress(n)
+      showPanel('step' + n)
+      if (n === 3) {
+        // 步骤 3「进入」：同样停 3 秒后自动进入触控板页面（按钮仍可手动点）
+        document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
+        countdown(3, '准备就绪，即将进入 PhVoice', enterApp)
       }
     }
 
-    function setStatus(cls, text) {
-      verifyStatus.className = 'verify-status' + (cls ? ' ' + cls : '')
-      verifyStatus.textContent = text
+    // 启动：探测证书是否已信任
+    ;(function () {
+      var target = ipUrl || appUrl
+      var ctrl = new AbortController()
+      var t = setTimeout(function () { ctrl.abort() }, 3000)
+      fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
+        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 PhVoice', function () { location.href = target }) } })
+        .catch(function () { clearTimeout(t) })
+    })()
+
+    // 步骤 1：配对
+    var pairBtn = document.getElementById('pairBtn')
+    var pairInput = document.getElementById('pairCode')
+    var pairStatus = document.getElementById('pairStatus')
+    pairInput.addEventListener('input', function () { this.value = this.value.replace(/\\D/g, '').slice(0, 6) })
+    pairInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doPair() })
+    pairBtn.addEventListener('click', doPair)
+    function doPair() {
+      var code = pairInput.value.trim()
+      if (!/^[0-9]{6}$/.test(code)) { pairStatus.className = 'status error'; pairStatus.textContent = '请输入 6 位数字'; return }
+      pairBtn.disabled = true
+      pairStatus.className = 'status'
+      pairStatus.textContent = '验证中…'
+      fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) })
+        .then(function (r) { return r.json() })
+        .then(function (data) {
+          if (data.ok && data.token) {
+            pairToken = data.token
+            pairStatus.className = 'status success'
+            pairStatus.textContent = '配对成功 ✓'
+            countdown(3, '配对成功，即将进入下一步', function () { goStep(2); checkCert() })
+          } else {
+            pairStatus.className = 'status error'
+            pairStatus.textContent = data.error === 'code_invalid' ? '配对码不正确或已过期' : (data.message || data.error || '配对失败')
+            pairInput.value = ''
+            pairInput.focus()
+          }
+        })
+        .catch(function (e) {
+          pairStatus.className = 'status error'
+          pairStatus.textContent = '网络错误：' + e.message
+        })
+        .finally(function () { pairBtn.disabled = false })
     }
 
-    function showDiag(lines) {
-      diag.textContent = lines.join('\\n')
-      diag.style.display = lines.length ? 'block' : 'none'
+    // 步骤 2：检查证书 + 验证
+    function checkCert() {
+      var target = ipUrl || appUrl
+      var ctrl = new AbortController()
+      var t = setTimeout(function () { ctrl.abort() }, 4000)
+      fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
+        .then(function (r) { clearTimeout(t); if (r.ok) return { ok: true }; return { ok: false } })
+        .catch(function () { clearTimeout(t); return { ok: false } })
+        .then(function (result) {
+          if (result.ok) {
+            var certStatus = document.getElementById('certStatus')
+            certStatus.className = 'status success'
+            certStatus.textContent = '证书已安装 ✓'
+            document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
+            countdown(3, '证书已就绪，即将进入 PhVoice', function () { goStep(3) })
+          }
+        })
     }
 
-    async function verifyInstall() {
-      verifyButton.disabled = true
-      setStatus('', '正在验证（最多约 8 秒）…')
-      showDiag([])
-      // 本页本身就是通过 HTTP 打开的，能加载出来就说明“设备→Mac”网络是通的。
-      const results = await Promise.all([
-        probe(appUrl, 6000).then((r) => ({ label: '域名', url: appUrl, ...r })),
-        probe(ipUrl, 6000).then((r) => ({ label: 'IP 直连', url: ipUrl, ...r }))
-      ])
-      const okCandidate = results.find((r) => r.ok)
-      const detail = results.map((r) => r.label + (r.ok ? ' 成功' : ' ' + r.reason)).join('；')
-      showDiag(results.map((r) => r.label + '  →  ' + r.url + (r.ok ? '  OK' : '  失败: ' + r.reason)))
-
-      if (okCandidate) {
-        setStatus('success', '验证通过（' + detail + '），可以进入 PhVoice。')
-        openApp.href = okCandidate.url
-        return
-      }
-
-      // IP 直连是决定性测试（不依赖 mDNS）；.local 域名在安卓上常因组播解析失败，仅作参考
-      const ipResult = results[1]
-
-      if (ipResult.kind === 'timeout') {
-        setStatus('warn', '能连到 Mac（HTTP 正常），但 IP 直连 HTTPS 超时。这通常不是证书问题，而是路由器 / 防火墙拦截了 https 端口 8443。\\n请检查：\\n· 平板与 Mac 是否在同一个 Wi-Fi；\\n· 路由器是否开启了“访客网络 / AP 隔离”；\\n· Mac 的防火墙是否放行了 Node / Electron。\\n\\n探测详情：' + detail)
-      } else if (ipResult.kind === 'cert') {
-        setStatus('error', '网络通畅（HTTP 正常），但 HTTPS 证书未被当前浏览器信任。\\n这是问题所在：证书虽然装上了，但这个浏览器不认“用户 CA”。\\n请改用「Chrome」重新打开本页再点验证；并确认证书出现在「受信任的凭据 > 用户」且开关已开。\\n（应急：也可直接点“打开 PhVoice 语音输入”，在浏览器“不安全 / 继续访问”提示里选继续也能进，但证书未真正信任，仍建议按上方用 Chrome 装好。）\\n\\n探测详情：' + detail)
-      } else {
-        setStatus('error', '还没有验证通过。' + detail + '\\n请确认：已用 Chrome 打开本页、证书安装在「CA 证书」、并出现在「受信任的凭据 > 用户」。如果 IP 直连显示超时，请检查路由器 / 防火墙是否拦截了 8443 端口。')
-      }
-      verifyButton.disabled = false
-    }
-
-    verifyButton.addEventListener('click', verifyInstall)
+    var verifyBtn = document.getElementById('verifyBtn')
+    var certStatus = document.getElementById('certStatus')
+    verifyBtn.addEventListener('click', function () {
+      verifyBtn.disabled = true
+      certStatus.className = 'status'
+      certStatus.textContent = '正在验证…'
+      var target = ipUrl || appUrl
+      var ctrl = new AbortController()
+      var start = performance.now()
+      var t = setTimeout(function () { ctrl.abort() }, 6000)
+      fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
+        .then(function (r) { clearTimeout(t); return r.ok ? { ok: true } : { ok: false, reason: 'HTTP ' + r.status } })
+        .catch(function (e) {
+          clearTimeout(t)
+          var elapsed = Math.round(performance.now() - start)
+          if (e.name === 'AbortError') return { ok: false, reason: '超时' }
+          return { ok: false, reason: elapsed < 2000 ? '证书未被信任（请用 Chrome）' : '连接失败' }
+        })
+        .then(function (result) {
+          if (result.ok) {
+            certStatus.className = 'status success'
+            certStatus.textContent = '证书验证通过 ✓'
+            document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
+            countdown(3, '证书验证通过，即将进入 PhVoice', function () { goStep(3) })
+          } else {
+            certStatus.className = 'status error'
+            certStatus.textContent = '验证失败：' + result.reason + '\\n请确认用 Chrome 打开、证书安装在 CA 证书类型、且受信任凭据中已启用。'
+          }
+          verifyBtn.disabled = false
+        })
+    })
   </script>
 </body>
 </html>`
@@ -859,6 +1361,10 @@ function getCaDer(caFile) {
 function serveCertificateSetup(caFile, ctx) {
   return (req, res) => {
     const urlPath = req.url.split('?')[0]
+    if (urlPath === '/api/pair') {
+      handlePairRequest(req, res, ctx).catch((error) => log('server', '/api/pair 失败:', error.message))
+      return
+    }
     if (CONTROL_PATHS.includes(urlPath)) {
       handleControlRoutes(req, res, ctx).catch((error) => {
         log('server', '控制页请求失败:', error.message)
@@ -928,6 +1434,7 @@ function buildDeps() {
   return {
     asr, // AsrPort：离线 sherpa / 在线 bailian 按 config.asr.provider 分发
     paster, // PastePort：mac-paster（剪贴板 + Cmd+V + mac-control 助手）
+    optimize, // OptimizePort：百炼 qwen 文字优化（纠错/润色/换语气）
     appList, // 前台应用枚举（平台面板数据源）
     usage, // 用量/计费统计
     config,
@@ -938,7 +1445,7 @@ function buildDeps() {
 
 function attachWebSocket(server, onStatus, deps) {
   // Interface 层依赖注入：端口默认由组合根提供，测试可用 mock 覆盖 createServer 的 deps。
-  const { asr, paster, appList, usage, config, log, enablePaste } = deps
+  const { asr, paster, appList, usage, optimize, config, log, enablePaste } = deps
   const wss = new WebSocketServer({ server, path: '/ws' })
   allWss.add(wss)
   let nextConnId = 1
@@ -947,28 +1454,74 @@ function attachWebSocket(server, onStatus, deps) {
     ws.isAlive = true
     ws.on('pong', () => { ws.isAlive = true })
     const connId = nextConnId++
-    const peer = req.socket.remoteAddress
-    const ua = req.headers['user-agent'] || ''
-    devices.set(connId, { id: connId, deviceId: null, name: '', platform: classifyPlatform(ua), ip: peer, connectedAt: Date.now(), lastActiveAt: Date.now() })
-    log('ws', `#${connId} 手机已连接 (${peer})`)
-    onStatus?.('connected')
-    // 手机端无法访问 /api/settings（控制面板仅 loopback），因此把触控板配置随连接下发，
-    // 让手机端应用可调的灵敏度/边缘/轨迹常量。
-    ws.send(JSON.stringify({ type: 'settings', trackpad: config.trackpad, vad: config.vad }))
-    // 会话状态机与识别/上屏用例收敛到 Application 层（SessionService）。
-    // Interface 层只做依赖注入 + socket 收发，不再直接操控会话状态。
-    const sessionSvc = new SessionService({
-      asr,
-      paster,
-      usage,
-      config,
-      enablePaste: ENABLE_PASTE,
-      log,
-      emit: (payload) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload)) },
-      connId,
-    })
+    let sessionSvc = null
+    let wasConnected = false
+    let rejected = false // 一旦预鉴权阶段判了拒绝，就不再允许任何帧（含后续赶到的 auth）再 authorize
+    // 首帧鉴权：未配对/令牌无效的连接直接关闭，不建立会话、不收音频、不上屏、不控鼠标。
+    const authTimer = setTimeout(() => {
+      if (!wasConnected) {
+        // 诊断：5s 没收到合法 auth 帧 → 大概率是手机端旧版缓存 app.js（首帧发的 identify 而非 auth）
+        log('ws', `#${connId} 鉴权失败：5s 内未收到合法 auth 帧`)
+        rejected = true
+        ws.close(4001, 'unauthorized')
+      }
+    }, 5000)
+
+    function authorize() {
+      if (wasConnected) return
+      wasConnected = true
+      clearTimeout(authTimer)
+      const peer = req.socket.remoteAddress
+      const ua = req.headers['user-agent'] || ''
+      devices.set(connId, { id: connId, deviceId: null, name: '', platform: classifyPlatform(ua), ip: peer, connectedAt: Date.now(), lastActiveAt: Date.now() })
+      log('ws', `#${connId} 已配对设备已连接 (${peer})`)
+      onStatus?.('connected')
+      // 会话状态机与识别/上屏用例收敛到 Application 层（SessionService）。
+      // Interface 层只做依赖注入 + socket 收发，不再直接操控会话状态。
+      sessionSvc = new SessionService({
+        asr,
+        paster,
+        usage,
+        optimize,
+        config,
+        enablePaste: ENABLE_PASTE,
+        log,
+        emit: (payload) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload)) },
+        connId,
+        // 会话 start 前校验引擎可用性（bailian 看 Key / sherpa 看模型文件），两者都缺时 fail-fast。
+        providerAvailable,
+      })
+      // 挂到 ws 上：broadcastSettings / 预算降级重推时按连接计算 vad/provider（云端/本地模式是每连接覆盖）。
+      ws.sessionSvc = sessionSvc
+      // 设备记录挂模式访问器：/api/devices 据此显示每台手机的输入模式（云端/本地/键盘）。
+      // 函数属性不会被 JSON.stringify 序列化，getDevices 里会显式取值。
+      const devEntry = devices.get(connId)
+      if (devEntry) devEntry.getMode = () => sessionSvc.displayMode()
+      // 手机端无法访问 /api/settings（控制面板仅 loopback），因此把触控板配置随连接下发。
+      ws.send(settingsPayloadFor(ws))
+    }
 
     ws.on('message', (data, isBinary) => {
+      // 未鉴权：只接受 auth 帧；其它（含二进制音频）一律拒绝。
+      if (!wasConnected) {
+        if (rejected) return // 已判拒绝，后续帧忽略，避免半连接
+        if (isBinary) { rejected = true; log('ws', `#${connId} 鉴权失败：首帧是二进制帧`); ws.close(4001, 'unauthorized'); return }
+        let authMsg
+        try { authMsg = JSON.parse(data.toString()) } catch { rejected = true; log('ws', `#${connId} 鉴权失败：首帧不是合法 JSON`); ws.close(4001, 'unauthorized'); return }
+        if (authMsg.type === 'auth' && pairing.validateToken(authMsg.token)) {
+          authorize()
+        } else {
+          // 诊断：区分「首帧不是 auth」(旧缓存JS) 与「令牌为空/无效」(origin 不匹配或未配对)
+          const reason = authMsg.type !== 'auth'
+            ? `首帧不是 auth(${authMsg.type})，疑似旧版缓存`
+            : (authMsg.token ? '令牌无效' : '令牌为空，疑似源不匹配或未配对')
+          rejected = true
+          log('ws', `#${connId} 鉴权失败：${reason}`)
+          ws.close(4001, 'unauthorized')
+        }
+        return
+      }
+
       const dev = devices.get(connId)
       if (dev) dev.lastActiveAt = Date.now()
       if (isBinary) {
@@ -1014,13 +1567,21 @@ function attachWebSocket(server, onStatus, deps) {
       } else if (msg.type === 'compose') {
         // 手机端 compose：文本 + 附件（图片/文件原子上屏），粘贴后自动回车
         sessionSvc.compose(msg)
+      } else if (msg.type === 'inputMode') {
+        // 手机端三种输入模式：云端(cloud→bailian)/本地(local→sherpa) 仅本连接生效，不改全局 config；
+        // 键盘(keyboard) 不改 provider 覆盖，仅记录为展示模式（控制面板设备列表显示「键盘」）。
+        sessionSvc.setInputMode(msg.mode)
+        if (ws.readyState === WebSocket.OPEN) ws.send(settingsPayloadFor(ws))
       } else if (msg.type === 'send') {
-        sessionSvc.send()
+        sessionSvc.send(msg)
       } else if (msg.type === 'repaste') {
         // 重新上屏：首次上屏贴错位置后，用户把 Mac 光标移到正确位置，重新粘贴最后一次结果。
         sessionSvc.repaste(msg)
       } else if (msg.type === 'delete') {
-        sessionSvc.removeLast()
+        sessionSvc.removeLast(msg)
+      } else if (msg.type === 'optimize') {
+        // 文字优化：对最近一条识别结果纠错/润色，删旧文 + 上优化文替换
+        sessionSvc.optimize(msg)
       } else if (msg.type === 'window') {
         const dir = msg.dir === 'prev' ? 'prev' : 'next'
         log('ws', `#${connId} 切换窗口: ${dir}`)
@@ -1047,7 +1608,7 @@ function attachWebSocket(server, onStatus, deps) {
         paster.activateApp(bundleId)
         ws.send(JSON.stringify({ type: 'appActivated', bundleId }))
       } else if (msg.type === 'gesture') {
-        const action = ['expose', 'mission', 'launchpad'].includes(msg.action) ? msg.action : 'mission'
+        const action = ['expose', 'mission', 'launchpad', 'spacesLeft', 'spacesRight'].includes(msg.action) ? msg.action : 'mission'
         log('ws', `#${connId} 触发手势: ${action}`)
         paster.gesture(action)
         ws.send(JSON.stringify({ type: 'gestureDone', action }))
@@ -1072,7 +1633,7 @@ function attachWebSocket(server, onStatus, deps) {
       } else if (msg.type === 'mouseRightClick') {
         paster.mouseRightClick()
       } else if (msg.type === 'mouseScroll') {
-        const sens = config.trackpad.sensitivity
+        const sens = config.trackpad.scrollSensitivity
         paster.mouseScroll((msg.dx || 0) * sens, (msg.dy || 0) * sens)
       } else if (msg.type === 'log') {
         // 手机端关键事件上报，集中进同一个日志文件
@@ -1081,10 +1642,11 @@ function attachWebSocket(server, onStatus, deps) {
     })
 
     ws.on('close', () => {
-      sessionSvc.dispose()
+      clearTimeout(authTimer)
+      if (sessionSvc) sessionSvc.dispose()
       log('ws', `#${connId} 连接断开`)
       devices.delete(connId)
-      onStatus?.('disconnected')
+      if (wasConnected) onStatus?.('disconnected')
     })
 
     ws.on('error', (error) => log('ws', `#${connId} 连接错误:`, error.message))
@@ -1102,7 +1664,10 @@ function attachWebSocket(server, onStatus, deps) {
       client.ping()
     }
   }, 30000)
-  wss.on('close', () => clearInterval(heartbeat))
+  wss.on('close', () => {
+    clearInterval(heartbeat)
+    allWss.delete(wss) // 服务重启（端口/IP 变更）时从广播集合摘除，避免跨重启累积旧实例
+  })
 
   return wss
 }
@@ -1117,9 +1682,13 @@ function listen(server, port) {
   })
 }
 
-async function createServer({ onStatus, onQuit, deps } = {}) {
+async function createServer({ onStatus, onQuit, deps, onServicesChanged, onLaunchAtLogin, getLaunchAtLoginState } = {}) {
   // 组合根：未显式注入时由 buildDeps() 装配真实实现；测试/替换可传 mock。
+  // 注意：这三个回调由主进程传入，走顶层参数而不是 deps —— deps 是功能依赖（asr/paster 等），两者不能混。
   const { asr, paster, appList, usage, config, log, enablePaste } = deps || buildDeps()
+  // 端口每次调用都重新解析：改端口→重启服务时能读到 config 里的新值，无需退出进程。
+  const HTTP_PORT = resolveHttpPort()
+  const HTTPS_PORT = resolveHttpsPort()
   log('server', `ASR provider: ${config.asr.provider}`)
   const lanIp = getLanIp() || '127.0.0.1'
   const localHostname = getLocalHostname()
@@ -1130,7 +1699,7 @@ async function createServer({ onStatus, onQuit, deps } = {}) {
     const appUrl = `https://${localHostname}:${HTTPS_PORT}`
     const ipUrl = `https://${lanIp}:${HTTPS_PORT}`
     const setupUrl = `http://${lanIp}:${HTTP_PORT}`
-    const ctx = { url: appUrl, ipUrl, setupUrl, isSecure: true, certReason: cert.reason, onQuit }
+    const ctx = { url: appUrl, ipUrl, setupUrl, isSecure: true, certReason: cert.reason, onQuit, httpPort: HTTP_PORT, httpsPort: HTTPS_PORT, onServicesChanged, onLaunchAtLogin, getLaunchAtLoginState }
 
     const appServer = https.createServer({
       cert: fs.readFileSync(cert.certFile),
@@ -1151,7 +1720,7 @@ async function createServer({ onStatus, onQuit, deps } = {}) {
   }
 
   const url = `http://${lanIp}:${HTTP_PORT}`
-  const ctx = { url, ipUrl: url, setupUrl: null, isSecure: false, certReason: cert.reason, onQuit }
+  const ctx = { url, ipUrl: url, setupUrl: null, isSecure: false, certReason: cert.reason, onQuit, httpPort: HTTP_PORT, httpsPort: HTTPS_PORT, onServicesChanged, onLaunchAtLogin, getLaunchAtLoginState }
   const appServer = http.createServer((req, res) => serveApp(req, res, ctx))
   const wss = attachWebSocket(appServer, onStatus, deps || buildDeps())
   ctx.wss = wss
@@ -1184,4 +1753,4 @@ if (require.main === module) {
     })
 }
 
-module.exports = { createServer, getLanIp, getLocalHostname }
+module.exports = { createServer, getLanIp, getLocalHostname, broadcastSettingsToAll }

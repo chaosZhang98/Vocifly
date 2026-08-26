@@ -28,6 +28,8 @@ const state = {
 let budgetAutoDowngraded = false
 // 广播回调：由 server.js 注入，用于月度预算超限时向所有在线手机推 toast
 let broadcastToPhones = () => {}
+// 降级善后回调：由 server.js 注入，用于清除各连接的 provider 覆盖并重推 settings
+let onAutoDowngrade = () => {}
 
 // ---- 日期工具 ----
 function pad(n, w = 2) { return String(n).padStart(w, '0') }
@@ -210,8 +212,11 @@ function getSnapshot() {
 // ---- 单价 / 统计 / 预算 / 导出（自 server.js 收敛而来，降低 server.js 耦合） ----
 
 // bailian 按音频时长计费：duration(秒) = audioBytes / 2 / 16000
-function getAsrPricePerSecond() {
-  if (config.asr.provider !== 'bailian') return 0
+// provider 可选：按指定引擎取价（手机端「云端/本地」模式按连接覆盖 provider 时，
+// 计费须按会话实际所用引擎算，不能只看全局 config）。
+function getAsrPricePerSecond(provider) {
+  const p = provider || config.asr.provider
+  if (p !== 'bailian') return 0
   const price = Number(config.asr.bailian.pricePerSecond)
   return Number.isFinite(price) && price > 0 ? price : 0.00033
 }
@@ -232,11 +237,15 @@ function getUsageStats() {
   }
 }
 
-// 月度费用超限自动降级：当月费用达到预算上限时，把 bailian(在线) 自动切为 sherpa(离线)，
+// 月度费用超限自动降级：当月费用达到预算上限时，把 bailian(云端) 自动切为 sherpa(本地)，
 // 避免继续产生费用；不中断当前会话，下次识别即生效。一个月内只触发一次（标记位），
-// 用户手动切回在线后也不会被立刻拉回，直到月度重置（费用回落）或主动提高预算。
-function checkBudgetAndMaybeDowngrade() {
-  if (config.asr.provider !== 'bailian') return
+// 用户手动切回云端后也不会被立刻拉回，直到月度重置（费用回落）或主动提高预算。
+// 降级是全局的：会压过单台手机的「云端」模式选择（onAutoDowngrade 清掉各连接覆盖并重推 settings）。
+// provider 可选：手机端按连接覆盖 provider 时，全局 config 可能已是 sherpa，
+// 但某台手机仍在用 bailian 计费 —— 此时照样要触发降级保护（按本次会话实际引擎判断）。
+function checkBudgetAndMaybeDowngrade(provider) {
+  const p = provider || config.asr.provider
+  if (p !== 'bailian') return
   const limit = Number(config.budget && config.budget.monthlyYuan) || 0
   if (limit <= 0) { budgetAutoDowngraded = false; return }
   const snap = getSnapshot()
@@ -247,13 +256,15 @@ function checkBudgetAndMaybeDowngrade() {
       config.asr.provider = 'sherpa'
       try {
         saveSettings({ asr: { provider: 'sherpa' } })
-        log('usage', `本月费用 ¥${monthCost.toFixed(2)} 已达预算 ¥${limit.toFixed(2)}，自动切换为离线识别(sherpa)`)
-        broadcastToPhones(JSON.stringify({ type: 'toast', text: '本月费用已达预算，已自动切换为离线识别', target: 'enter' }))
+        log('usage', `本月费用 ¥${monthCost.toFixed(2)} 已达预算 ¥${limit.toFixed(2)}，自动切换为本地识别(sherpa)`)
+        broadcastToPhones(JSON.stringify({ type: 'toast', text: '本月费用已达预算，已自动切换为本地识别', target: 'enter' }))
       } catch (error) {
-        log('usage', '自动降级失败（保留在线）:', error.message)
+        log('usage', '自动降级失败（保留云端）:', error.message)
         config.asr.provider = 'bailian'
         budgetAutoDowngraded = false
+        return
       }
+      try { onAutoDowngrade() } catch (e) { log('usage', '降级善后（清覆盖/重推 settings）失败:', e.message) }
     }
   } else {
     // 月度费用回到预算内（通常为跨月），允许后续再次进行自动降级保护
@@ -297,6 +308,7 @@ function usageExportCsv(type) {
 // ---- 初始化：注册广播回调并恢复统计 ----
 function init(opts = {}) {
   if (typeof opts.broadcastToPhones === 'function') broadcastToPhones = opts.broadcastToPhones
+  if (typeof opts.onAutoDowngrade === 'function') onAutoDowngrade = opts.onAutoDowngrade
   load()
 }
 

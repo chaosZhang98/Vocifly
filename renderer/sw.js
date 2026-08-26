@@ -3,7 +3,7 @@
 // 策略：静态资源 network-first（在线优先、离线回退缓存）。开发期改动能即时下发，
 //       避免“服务器已改、手机仍是旧样式”的缓存不同步；离线时仍可回退到缓存壳。
 // 每次发布大版本请递增 CACHE（如 phvoice-v2），以清掉旧缓存。
-const CACHE = 'phvoice-v6'
+const CACHE = 'phvoice-v42'
 const CORE = [
   '/',
   '/index.html',

@@ -36,6 +36,7 @@ class SessionService {
    * @param {Object} deps.asr         AsrPort：{ createSession({onPartial, onFinal, context, config}) -> {start, pushAudio, finish} }
    * @param {Object} deps.paster      PastePort：{ paste, pasteImage, pasteFile, send, deleteStep, switchWindow, activateApp, ... }
    * @param {Object} deps.usage       usagePort：{ recordUsage, patchLastText, checkBudgetAndMaybeDowngrade, getAsrPricePerSecond }
+   * @param {Object} deps.optimize    OptimizePort：{ optimize(text, opts) -> Promise<string> } 文字优化（纠错/润色）
    * @param {Object} deps.config      只读配置引用（读 provider / bailian.contextEnabled / attachPasteDelayMs 等）
    * @param {boolean} deps.enablePaste  是否上屏（测试模式可关）
    * @param {(history: string[]) => Object[]} deps.contextBuilder  ASR 上下文构造（默认 buildAsrContext）
@@ -44,10 +45,11 @@ class SessionService {
    * @param {string|number} deps.connId  连接 id（日志 / deviceId）
    */
   constructor(deps) {
-    const { asr, paster, usage, config, enablePaste, contextBuilder, log, emit, connId } = deps
+    const { asr, paster, usage, optimize, config, enablePaste, contextBuilder, log, emit, connId } = deps
     this.asr = asr
     this.paster = paster
     this.usage = usage
+    this.optimizer = optimize // 注意：字段名用 optimizer，避免与同名用例方法 optimize() 冲突（实例自身属性会遮蔽原型方法）
     this.config = config
     this.enablePaste = enablePaste
     this.log = log
@@ -55,6 +57,7 @@ class SessionService {
     this.connId = connId
     this.contextBuilder = contextBuilder || buildAsrContext
     this.stallMs = deps.stallMs || 1000 // 半句停顿超过此值就锁定为“暂定稿”（前端以正常色显示），default 1s
+    this.providerAvailable = deps.providerAvailable || null // (provider) => boolean，start 前校验引擎可用性
 
     // —— 每连接一套的会话状态 ——
     this.session = null
@@ -76,6 +79,39 @@ class SessionService {
     this.lastFinalized = ''  // 最近一次下发的 finalized（含 stable 前缀）
     this.lastPartial = ''    // 最近一次下发的半句
     this.stallTimer = null
+    // —— 每连接的输入模式（云端/本地仅本手机生效，不改全局 config）——
+    this.providerOverride = null  // 'bailian' | 'sherpa' | null(跟随全局)
+    this.clientMode = null        // 手机端上报的展示模式 'cloud'|'local'|'keyboard'|null（供控制面板设备列表显示）
+    this.sessionProvider = null   // 本次会话实际使用的 provider（计费按它算，防止中途切换错配）
+  }
+
+  // 用例：手机端切换输入模式。mode: 'cloud'→bailian | 'local'→sherpa | 'keyboard'→仅记录展示模式
+  // （键盘是纯文字通路，不动 provider 覆盖）| null→清除覆盖跟随全局（预算降级时 server 调用）。
+  // 仅作用于本连接：进行中的会话不切引擎，下一次 start 生效。
+  setInputMode(mode) {
+    if (mode === 'keyboard') {
+      this.clientMode = 'keyboard'
+      // 键盘是纯文字通路，不覆盖引擎（跟随全局）。清除 providerOverride 既保证语义正确，
+      // 又避免预算自动降级按 providerOverride==='bailian' 误伤键盘连接、把 clientMode 一并清掉（显示回落）。
+      this.providerOverride = null
+      this.log('ws', `#${this.connId} 输入模式切换: keyboard（仅展示，provider 覆盖清除）`)
+      return
+    }
+    const provider = mode === 'cloud' ? 'bailian' : mode === 'local' ? 'sherpa' : null
+    this.providerOverride = provider
+    this.clientMode = provider ? mode : null
+    this.log('ws', `#${this.connId} 输入模式切换: ${mode || '(跟随全局)'} → provider=${provider || this.config.asr.provider}`)
+  }
+
+  // 本连接当前生效的 provider（覆盖优先于全局配置）。
+  effectiveProvider() {
+    return this.providerOverride || this.config.asr.provider
+  }
+
+  // 本连接的展示模式（供 /api/devices）：键盘优先，否则按实际引擎映射为 cloud/local。
+  displayMode() {
+    if (this.clientMode) return this.clientMode
+    return this.effectiveProvider() === 'bailian' ? 'cloud' : 'local'
   }
 
   // 推送一块 PCM（Int16 16kHz mono）
@@ -154,8 +190,23 @@ class SessionService {
     }
     const mySeq = ++this.sessionSeq
     this.log('ws', `#${this.connId} 开始一次识别`)
-    const useContext = this.config.asr.provider === 'bailian' && this.config.asr.bailian.contextEnabled !== false
+    const provider = this.effectiveProvider()
+    this.sessionProvider = provider
+    // fail-fast：引擎不可用（云端缺 Key / 本地缺模型）时立即回弹框，而不是等用户说完才在 finish 报错。
+    // 手机端虽已用 settings 里的 availability 在「说话」前拦截，这里作为兜底（信息过期/文件被删等）。
+    if (this.providerAvailable && !this.providerAvailable(provider)) {
+      this.log('ws', `#${this.connId} provider ${provider} 不可用，拒绝开始识别`)
+      this.emit({
+        type: 'asrUnavailable',
+        provider,
+        cloud: this.providerAvailable('bailian'),
+        offline: this.providerAvailable('sherpa'),
+      })
+      return
+    }
+    const useContext = provider === 'bailian' && this.config.asr.bailian.contextEnabled !== false
     this.session = this.asr.createSession({
+      provider,
       context: useContext ? this.contextBuilder(this.history) : [],
       onPartial: (finalized, partial) => {
         if (mySeq !== this.sessionSeq) return
@@ -202,9 +253,9 @@ class SessionService {
     const seconds = (this.audioBytes / 2 / 16000).toFixed(1)
     this.log('ws', `#${this.connId} 结束识别，共收到音频 ${(this.audioBytes / 1024).toFixed(0)}KB（约 ${seconds}s），耗时 ${Date.now() - this.sessionStartAt}ms`)
     if (this.audioBytes > 0) {
-      this.pendingUsage = this.usage.recordUsage({ seconds: this.audioBytes / 2 / 16000, text: '', pricePerSecond: this.usage.getAsrPricePerSecond(), deviceId: this.connId })
+      this.pendingUsage = this.usage.recordUsage({ seconds: this.audioBytes / 2 / 16000, text: '', pricePerSecond: this.usage.getAsrPricePerSecond(this.sessionProvider), deviceId: this.connId })
       this.log('usage', `#${this.connId} 记录 1 次识别：${(this.audioBytes / 2 / 16000).toFixed(1)}s（计费 ${this.pendingUsage.billableSeconds}s），约 ¥${this.pendingUsage.costYuan.toFixed(5)}`)
-      this.usage.checkBudgetAndMaybeDowngrade()
+      this.usage.checkBudgetAndMaybeDowngrade(this.sessionProvider)
     }
     this.session?.finish()
     this.session = null
@@ -214,9 +265,9 @@ class SessionService {
   cancel() {
     this.discardResult = true
     if (this.audioBytes > 0) {
-      this.pendingUsage = this.usage.recordUsage({ seconds: this.audioBytes / 2 / 16000, text: '（用户取消）', pricePerSecond: this.usage.getAsrPricePerSecond(), deviceId: this.connId })
+      this.pendingUsage = this.usage.recordUsage({ seconds: this.audioBytes / 2 / 16000, text: '（用户取消）', pricePerSecond: this.usage.getAsrPricePerSecond(this.sessionProvider), deviceId: this.connId })
       this.log('usage', `#${this.connId} 记录 1 次取消识别：${(this.audioBytes / 2 / 16000).toFixed(1)}s（计费 ${this.pendingUsage.billableSeconds}s），约 ¥${this.pendingUsage.costYuan.toFixed(5)}`)
-      this.usage.checkBudgetAndMaybeDowngrade()
+      this.usage.checkBudgetAndMaybeDowngrade(this.sessionProvider)
     }
     this.session?.finish()
     this.session = null
@@ -225,11 +276,15 @@ class SessionService {
   // 用例：手机端 compose —— 文本 + 附件（图片/文件）原子上屏，粘贴后自动回车。
   compose(msg) {
     const composeText = typeof msg.text === 'string' ? msg.text : ''
-    const MAX_ATTACH = 5
-    const MAX_B64 = 28 * 1024 * 1024 // 约 20MB 文件的 base64
+    // 键盘（compose）通路参数：附件数量/大小上限、上屏后是否自动回车，由控制面板「输入模式 → 键盘」配置
+    const maxAttach = (Number.isInteger(this.config?.compose?.fileMaxCount) && this.config.compose.fileMaxCount > 0)
+      ? this.config.compose.fileMaxCount : 5
+    const maxMB = Number(this.config?.compose?.fileMaxMB) > 0 ? Number(this.config.compose.fileMaxMB) : 20
+    const maxB64 = Math.round(maxMB * 1024 * 1024 * 1.4) // base64 约膨胀 1.37 倍
+    const sendAfterPaste = !!this.config?.compose?.sendAfterPaste
     const attachments = (Array.isArray(msg.attachments) ? msg.attachments : [])
-      .filter((a) => a && typeof a.base64 === 'string' && a.base64.length <= MAX_B64)
-      .slice(0, MAX_ATTACH)
+      .filter((a) => a && typeof a.base64 === 'string' && a.base64.length <= maxB64)
+      .slice(0, maxAttach)
     if (!composeText.trim() && attachments.length === 0) {
       this.emit({ type: 'toast', text: '输入内容为空', target: 'enter' })
       return
@@ -262,7 +317,12 @@ class SessionService {
             else await this.paster.pasteFile(a.name || 'file', a.base64)
             await sleepMs(settle)
           }
-          // 仅粘贴到光标处，不模拟回车发送（发送由用户手动在 PC 上触发）
+          // 默认只粘贴到光标处（发送由用户手动点「执行」）；「键盘 → 上屏后自动发送」开启时再模拟回车
+          if (sendAfterPaste) {
+            await sleepMs(this.config.sendDelayMs || 120)
+            this.paster.send()
+            this.log('ws', `#${this.connId} compose 已按设置自动回车`)
+          }
         } else {
           this.log('paste', '测试模式，跳过 compose 上屏')
         }
@@ -275,12 +335,21 @@ class SessionService {
   }
 
   // 用例：用户点击发送 —— 对最后一次上屏内容模拟回车。
-  send() {
+  send(msg) {
     const lastText = this.pasteHistory[this.pasteHistory.length - 1]
     if (lastText) {
       this.log('ws', `#${this.connId} 用户点击发送: ${lastText}`)
       this.paster.send()
       this.pasteHistory = []
+      this.emit({ type: 'sent' })
+      return
+    }
+    // pasteHistory 已在首次发送时清空，但手机端记录会保留到下一次语音输入：
+    // 用户可能「执行 → 发现贴错位置 → 重新上屏 → 再执行」，也允许直接重复回车。
+    const fallback = msg && typeof msg.text === 'string' ? msg.text.trim() : ''
+    if (fallback) {
+      this.log('ws', `#${this.connId} 用户重复发送: ${fallback}`)
+      this.paster.send()
       this.emit({ type: 'sent' })
     } else {
       this.emit({ type: 'toast', text: '先点击说话', target: 'enter' })
@@ -311,15 +380,72 @@ class SessionService {
   }
 
   // 用例：删除上次上屏（回退一步）。
-  removeLast() {
+  // 手机端有两个入口：回退按钮（无 mode）走「自适应」——按前台 App 的 deleteRules 决定 undo/backspace/none；
+  // 删除键（mode='backspace'）强制逐字符退格，绕过规则（终端等 Cmd+Z 不撤销粘贴的场景）。
+  removeLast(msg) {
     if (this.pasteHistory.length) {
       const lastText = this.pasteHistory.pop()
-      this.log('ws', `#${this.connId} 用户回退一步: ${lastText}`)
-      this.paster.deleteStep(lastText)
-      this.emit({ type: 'deleted', remaining: this.pasteHistory.length })
+      const forceBackspace = msg?.mode === 'backspace'
+      this.log('ws', `#${this.connId} 用户回退一步(${forceBackspace ? 'backspace' : '自适应'}): ${lastText}`)
+      // 自适应路径不传 opts.mode，让 deleteStep 走 resolveDeleteRule；否则恒传 mode 会让 'none' 规则永远失效。
+      this.paster.deleteStep(lastText, forceBackspace ? { mode: 'backspace' } : undefined)
+      this.emit({ type: 'deleted', mode: forceBackspace ? 'backspace' : 'undo', remaining: this.pasteHistory.length })
     } else {
       this.emit({ type: 'toast', text: '没有可回退的内容', target: 'delete' })
     }
+  }
+
+  // 用例：文字优化 —— 对最近一条识别结果做纠错/润色，然后「删旧文 + 上优化文」替换。
+  // 交互是「事后手动」：用户点手机端「优化」按钮触发，作用于最近一条上屏内容。
+  optimize(msg) {
+    const original = this.pasteHistory[this.pasteHistory.length - 1]
+    if (!original) {
+      this.emit({ type: 'toast', text: '没有可优化的内容', target: 'enter' })
+      return
+    }
+    if (!this.optimizer) {
+      this.emit({ type: 'toast', text: '文字优化不可用', target: 'enter' })
+      return
+    }
+    this.log('ws', `#${this.connId} 用户请求优化: ${original}`)
+    this.emit({ type: 'optimizing' })
+    // promptId 可选：手机端从优化模板选了某条时回传；未传则服务端按 defaultId 兜底。
+    this.optimizer.optimize(original, { promptId: msg && msg.promptId })
+      .then(async (optimized) => {
+        if (!optimized || optimized === original) {
+          this.log('ws', `#${this.connId} 优化未产生变化`)
+          this.emit({ type: 'toast', text: '优化未产生变化', target: 'enter' })
+          this.emit({ type: 'optimizeError' })
+          return
+        }
+        if (this.enablePaste) {
+          // 删旧文 + 上优化文：deleteStep 现返回 Promise（真正删完才 resolve），确保先删后贴不串时序。
+          // 删除失败（resolve false，如辅助功能权限缺失/退格失败）时中止替换，否则会把新文拼在旧文后。
+          const deleted = await this.paster.deleteStep(original, { mode: 'backspace' })
+          if (!deleted) {
+            this.emit({ type: 'toast', text: '删除原文失败，已取消优化替换（请检查 Mac 的「辅助功能」权限）', target: 'enter' })
+            this.emit({ type: 'optimizeError' })
+            return
+          }
+          const ok = await this.paster.paste(optimized)
+          if (!ok) {
+            this.emit({ type: 'toast', text: '上屏失败：请检查 Mac 的「辅助功能」权限', target: 'enter' })
+            this.emit({ type: 'optimizeError' })
+            return
+          }
+        } else {
+          this.log('paste', '测试模式，跳过优化替换上屏:', optimized)
+        }
+        // 用优化结果替换 pasteHistory 栈顶，后续「回退/重新上屏/再优化」都作用在优化后的文本上。
+        this.pasteHistory[this.pasteHistory.length - 1] = optimized
+        this.log('ws', `#${this.connId} 优化完成: ${optimized}`)
+        this.emit({ type: 'optimized', text: optimized })
+      })
+      .catch((e) => {
+        this.log('ws', `#${this.connId} 优化失败:`, e.message)
+        this.emit({ type: 'toast', text: `优化失败：${e.message}`, target: 'enter' })
+        this.emit({ type: 'optimizeError' })
+      })
   }
 
   // WebSocket 连接关闭时释放资源：清掉 partial 节流定时器，结束仍在识别的会话。

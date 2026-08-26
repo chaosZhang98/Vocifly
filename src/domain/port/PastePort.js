@@ -24,8 +24,10 @@ class PastePort {
     throw new Error('PastePort.send 为抽象端口，需由 Infrastructure 层实现注入')
   }
 
-  /** 撤销/删除上次上屏内容。 @param {string} text */
-  deleteStep(_text) {
+  /** 撤销/删除上次上屏内容。
+   *  @param {string} text 回退目标文本
+   *  @param {{mode?: 'undo'|'backspace'}} [opts] mode='backspace' 强制逐字符退格（等效键盘删除键），不传则按规则自适应 */
+  deleteStep(_text, _opts) {
     throw new Error('PastePort.deleteStep 为抽象端口，需由 Infrastructure 层实现注入')
   }
 

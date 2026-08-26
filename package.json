@@ -9,6 +9,7 @@
     "setup:https": "node scripts/setup-local-https.js",
     "test:asr": "node scripts/test-asr.js",
     "test:mock": "node scripts/test-bailian-mock.js",
+    "test:domain": "node scripts/test-domain.js",
     "trace": "node scripts/trace-recognition.js",
     "build:mac": "electron-builder --mac --publish never && codesign --force --deep --sign - dist/mac-arm64/PhVoice.app",
     "dist": "electron-builder --mac dmg --publish never && codesign --force --deep --sign - dist/mac-arm64/PhVoice.app"

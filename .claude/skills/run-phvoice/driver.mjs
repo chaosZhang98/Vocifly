@@ -10,7 +10,7 @@
 // 说明：路径全部相对 app/ 根（本文件位于 app/.claude/skills/run-phvoice/）。
 
 import { spawn, execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -106,20 +106,21 @@ async function screenshot(out = SCREENSHOT) {
 
   await send('Page.enable')
   const shot = await send('Page.captureScreenshot', { format: 'png' })
-  writeFileSync(out, Buffer.from(shot.data, 'base64'))
+  const buf = Buffer.from(shot.data, 'base64')
+  writeFileSync(out, buf)
   ws.close()
-  console.log(`截图已写: ${out} (${Buffer.from(shot.data, 'base64').length} bytes)`)
+  console.log(`截图已写: ${out} (${buf.length} bytes)`)
 }
 
 async function main() {
   const [cmd] = process.argv.slice(2)
-  const port = resolveHttpPort()
   if (cmd === 'stop') { killExisting(); console.log('已停止 PhVoice'); return }
-  if (cmd === 'launch') { await launch(); console.log(`就绪: http://127.0.0.1:${port}/control`); return }
-  if (cmd === 'smoke') { process.exit((await smoke(port)) ? 0 : 1); return }
   if (cmd === 'screenshot') { await screenshot(); return }
+  if (cmd === 'smoke') { process.exit((await smoke(resolveHttpPort())) ? 0 : 1); return }
+  // launch 自己 resolveHttpPort 并返回 { port }；run/launch 复用，不再顶层无条件解析
+  const { port } = await launch()
+  if (cmd === 'launch') { console.log(`就绪: http://127.0.0.1:${port}/control`); return }
   // 默认 run：launch → smoke → screenshot
-  await launch()
   const ok = await smoke(port)
   await screenshot()
   process.exit(ok ? 0 : 1)

@@ -6,106 +6,131 @@
   <title>PhVoice 控制面板</title>
   <style>
     :root {
-      --bg: #ececef;
-      --sidebar: rgba(246, 246, 248, 0.82);
-      --card: rgba(255, 255, 255, 0.92);
-      --border: rgba(0, 0, 0, 0.08);
-      --border-strong: rgba(0, 0, 0, 0.12);
-      --text: #1d1d1f;
-      --muted: #6e6e73;
-      --quiet: #86868b;
-      --accent: #0a84ff;
-      --accent-soft: rgba(10, 132, 255, 0.12);
-      --green: #30d158;
-      --red: #ff453a;
-      --radius: 14px;
-      --radius-sm: 10px;
-      --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
-      --heat-0: #ececef;
-      --heat-1: #cfe0ff;
-      --heat-2: #a3c7ff;
-      --heat-3: #5d9fff;
-      --heat-4: #0a6cf5;
+      /* 更清新的森林色板：明亮、通透、低对比 */
+      --bg: #f5f9f6;
+      --bg-soft: #eef5f0;
+      --sidebar: rgba(255, 255, 255, 0.78);
+      --card: #ffffff;
+      --card-soft: #f7fbf8;
+      --border: rgba(120, 150, 130, 0.18);
+      --border-strong: rgba(120, 150, 130, 0.28);
+      --text: #2c3e32;
+      --text-2: #5f7a68;
+      --text-3: #8ba698;
+      --accent: #5cd49a;
+      --accent-strong: #3bb87d;
+      --accent-soft: rgba(92, 212, 154, 0.12);
+      --green: #6dd99c;
+      --green-ink: #2e8f5e;
+      --green-soft: rgba(109, 217, 156, 0.15);
+      --red: #f27979;
+      --red-soft: rgba(242, 121, 121, 0.12);
+      --orange-ink: #b5894b;
+      --orange-soft: rgba(230, 190, 120, 0.16);
+      --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
+      --r-sm: 14px; --r-md: 18px; --r-lg: 24px;
+      --shadow-card: 0 1px 0 rgba(120,150,130,.06), 0 10px 32px rgba(120,150,130,.08);
+      --shadow-soft: 0 1px 0 rgba(120,150,130,.06);
+      --heat-0: #e6f2eb; --heat-1: #c3ebd3; --heat-2: #8fdeb8; --heat-3: #5cd49a; --heat-4: #2db273;
       --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", sans-serif;
       background: var(--bg);
       color: var(--text);
       -webkit-font-smoothing: antialiased;
       overflow: hidden;
     }
-    .app { display: flex; height: 100vh; }
+    /* 极淡的空气感纹理 */
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      opacity: .12;
+      background: radial-gradient(circle at 20% 10%, rgba(92,212,154,.14) 0%, transparent 35%),
+                  radial-gradient(circle at 85% 80%, rgba(120,180,220,.12) 0%, transparent 30%);
+    }
+    .app { display: flex; height: 100vh; position: relative; z-index: 1; }
 
-    /* ---------- Sidebar ---------- */
+    /* 侧栏 */
     .sidebar {
-      width: 232px; flex: 0 0 232px;
+      width: 236px; flex: 0 0 236px;
       background: var(--sidebar);
-      backdrop-filter: saturate(180%) blur(24px);
-      -webkit-backdrop-filter: saturate(180%) blur(24px);
+      backdrop-filter: saturate(180%) blur(18px);
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
       border-right: 1px solid var(--border);
       display: flex; flex-direction: column;
-      padding: 18px 12px 14px;
+      padding: var(--s5) var(--s3) var(--s4);
     }
-    .brand { display: flex; align-items: center; gap: 10px; padding: 6px 12px 18px; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 6px 12px 20px; }
     .brand-logo {
-      width: 34px; height: 34px; border-radius: 9px;
-      background: linear-gradient(160deg, #0a84ff, #5e5ce6);
-      display: flex; align-items: center; justify-content: center; color: #fff;
-      font-weight: 800; font-size: 16px;
-      box-shadow: 0 4px 10px rgba(10,132,255,.3);
+      width: 36px; height: 36px; border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(92,212,154,.28);
     }
+    .brand-logo svg { width: 100%; height: 100%; display: block; }
     .brand-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
-    .brand-sub { font-size: 11px; color: var(--quiet); margin-top: 2px; }
+    .brand-sub { font-size: 11px; color: var(--text-3); margin-top: 2px; }
 
-    .nav { flex: 1; display: flex; flex-direction: column; gap: 3px; }
-    .nav-label { font-size: 11px; font-weight: 600; color: var(--quiet); padding: 6px 12px 6px; text-transform: uppercase; letter-spacing: .03em; }
+    .nav { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .nav-label { font-size: 11px; font-weight: 700; color: var(--text-3); padding: 4px 12px 8px; letter-spacing: .06em; }
     .nav-item {
+      position: relative;
       display: flex; align-items: center; gap: 10px;
-      width: 100%; padding: 9px 12px;
-      border: 0; background: transparent; border-radius: 9px;
+      width: 100%; padding: 10px 12px;
+      border: 0; background: transparent; border-radius: var(--r-md);
       color: var(--text); font-size: 13.5px; font-weight: 500;
       cursor: pointer; text-align: left;
-      transition: background .18s ease, transform .12s ease;
+      transition: background .2s ease, color .2s ease, transform .12s ease;
     }
-    .nav-item svg { width: 18px; height: 18px; flex: 0 0 18px; opacity: .65; }
-    .nav-item:hover { background: rgba(0,0,0,.05); }
-    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item svg { width: 18px; height: 18px; flex: 0 0 18px; opacity: .55; }
+    .nav-item:hover { background: var(--accent-soft); color: var(--green-ink); }
+    .nav-item.active { background: var(--accent-soft); color: var(--green-ink); font-weight: 600; }
+    .nav-item.active::before {
+      content: ''; position: absolute; left: -12px; top: 10px; bottom: 10px;
+      width: 3px; border-radius: 2px; background: var(--accent);
+    }
     .nav-item.active svg { opacity: 1; }
     .nav-item:active { transform: scale(.98); }
 
-    .sidebar-foot { padding: 12px 6px 4px; border-top: 1px solid var(--border); }
-    .status-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(48,209,88,.18); }
-    .dot.off { background: var(--red); box-shadow: 0 0 0 3px rgba(255,69,58,.18); }
+    .sidebar-foot { padding: var(--s3) 6px 0; border-top: 1px solid var(--border); }
+    .status-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--text-2); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+    .dot.off { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
     .device-badge {
-      margin: 2px 10px 8px; padding: 6px 10px; border-radius: 8px;
-      background: rgba(0,0,0,.04); font-size: 12px; color: var(--muted);
+      margin: 4px 10px 10px; padding: 7px 10px; border-radius: var(--r-md);
+      background: var(--card-soft); border: 1px solid var(--border);
+      font-size: 12px; color: var(--text-2);
       display: flex; align-items: center; gap: 8px;
     }
     .device-badge b { color: var(--text); }
     .quit-btn {
-      display: flex; align-items: center; justify-content: center; gap: 7px;
-      width: 100%; margin-top: 8px; padding: 9px 12px;
-      border: 0; border-radius: 9px;
-      background: rgba(255,255,255,.6); color: var(--red);
-      font-size: 13px; font-weight: 600; cursor: pointer;
-      transition: background .18s ease;
+      display: flex; align-items: center; gap: 8px;
+      width: calc(100% - 20px);
+      margin: 4px 10px 10px; padding: 7px 10px;
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      background: var(--card); color: var(--red);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background .2s ease;
     }
-    .quit-btn:hover { background: rgba(255,69,58,.1); }
+    .quit-btn:hover { background: var(--red-soft); }
 
-    /* ---------- Main ---------- */
-    .main { flex: 1; overflow: auto; padding: 30px 36px 40px; }
-    .main-inner { max-width: 860px; margin: 0 auto; }
-    .page-head { margin-bottom: 20px; }
+    /* 主区 */
+    .main { flex: 1; overflow: auto; padding: var(--s8) 36px 48px; }
+    .main-inner { max-width: 880px; margin: 0 auto; }
+    .page-head { margin-bottom: var(--s6); display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
     .page-head h1 { margin: 0 0 6px; font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
-    .page-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
+    .page-head p { margin: 0; color: var(--text-2); font-size: 13.5px; }
+    .page-head .ph-left { min-width: 0; }
+    #headerSaveBtn { flex: 0 0 auto; align-self: center; padding: 0; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
+    #headerSaveBtn .ico { pointer-events: none; }
+    #headerSaveBtn:active { transform: scale(.93); }
+    /* 底部保存按钮隐藏：右上角 #headerSaveBtn 已统一承接当前 pane 的保存 */
+    #saveAsrBtn, #saveCtxBtn, #saveRulesBtn, #saveTrackpadBtn, #savePortsBtn { display: none; }
     .updated-at {
       display: inline-block; margin-left: 8px; padding: 2px 8px;
-      border-radius: 6px; background: rgba(0,0,0,.04); color: var(--quiet);
+      border-radius: 999px; background: var(--card-soft); color: var(--text-3);
       font-size: 11px; font-weight: 500; font-family: var(--font-mono);
       font-variant-numeric: tabular-nums; vertical-align: 2px;
     }
@@ -113,209 +138,329 @@
     .panel {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 22px 24px;
-      margin-bottom: 16px;
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-card);
+      padding: var(--s6);
+      margin-bottom: var(--s4);
     }
-    .panel h2 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
-    .panel .desc { margin: 0 0 18px; color: var(--muted); font-size: 12.5px; }
-    .panel .divider { height: 1px; background: var(--border); margin: 20px 0; }
+    .panel h2 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+    .panel h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+    .panel .desc { margin: 0 0 18px; color: var(--text-2); font-size: 12.5px; line-height: 1.6; }
+    .panel .divider { height: 1px; background: var(--border); margin: var(--s6) 0; }
 
-    /* status card */
-    .status-card {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px;
-      margin-bottom: 16px;
-    }
+    .status-card { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; }
     @media (max-width: 640px) { .status-card { grid-template-columns: 1fr; } }
-    .status-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-    .status-item .k { color: var(--quiet); font-size: 12px; font-weight: 600; min-width: 60px; }
-    .status-item .v { color: var(--text); font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .status-item .v code { font-size: 12px; font-family: ui-monospace, "SF Mono", Menlo, monospace; background: #f2f2f4; padding: 2px 6px; border-radius: 6px; }
-    .mini-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
-    .mini-tag.warn { background: rgba(255,149,0,.14); color: #b26a00; }
-    .mini-tag.off { background: rgba(142,142,147,.18); color: var(--muted); }
+    .status-item { display: flex; align-items: center; gap: 10px; font-size: 13px; min-width: 0; }
+    .status-item .k { color: var(--text-3); font-size: 12px; font-weight: 600; min-width: 60px; flex: 0 0 auto; }
+    .status-item .v { color: var(--text); font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    .status-item .v code { font-size: 12px; font-family: var(--font-mono); background: var(--bg-soft); padding: 2px 6px; border-radius: 8px; word-break: break-all; }
+    .mini-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--green-ink); }
+    .mini-tag.warn { background: var(--orange-soft); color: var(--orange-ink); }
+    .mini-tag.off { background: var(--bg-soft); color: var(--text-2); }
 
-    /* cost summary + heatmap */
-    .summary-line {
-      display: flex; flex-wrap: wrap; gap: 18px;
-      margin-bottom: 18px; padding: 12px 0;
-      border-bottom: 1px solid var(--border);
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); margin-bottom: var(--s4); }
+    @media (max-width: 720px) { .kpi-grid { grid-template-columns: 1fr; } }
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
+      box-shadow: var(--shadow-card); padding: 20px var(--s5);
+      display: flex; flex-direction: column; gap: 6px;
+      position: relative; overflow: hidden;
     }
-    .summary-line .sum { font-size: 13px; color: var(--muted); }
-    .summary-line .sum b { color: var(--text); font-size: 16px; font-weight: 700; margin-right: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-    .summary-line .sum small { color: var(--quiet); font-size: 12px; margin-left: 3px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .kpi-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, #8fdeb8, var(--accent));
+    }
+    .kpi-label { font-size: 12px; font-weight: 600; color: var(--text-3); letter-spacing: .02em; }
+    .kpi-num { font-size: 26px; font-weight: 700; letter-spacing: -.01em; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+    .kpi-detail { font-size: 12px; color: var(--text-2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .stat-table { display: flex; flex-direction: column; }
+    .stat-row {
+      display: grid; grid-template-columns: 72px 1fr auto; gap: var(--s3); align-items: baseline;
+      padding: 10px 2px; border-bottom: 1px solid var(--border);
+    }
+    .stat-row:last-child { border-bottom: 0; }
+    .stat-row .stat-k { font-size: 13px; color: var(--text-2); font-weight: 600; }
+    .stat-row .stat-v { font-size: 15px; font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .stat-row .stat-d { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
     .heatmap { overflow-x: auto; padding: 6px 0 4px; }
     .hm-month { position: relative; height: 16px; margin-bottom: 5px; min-width: 100%; }
-    .hm-month span {
-      position: absolute; top: 0; font-size: 11px; color: var(--quiet); white-space: nowrap;
-      transform: translateX(-1px);
-    }
+    .hm-month span { position: absolute; top: 0; font-size: 11px; color: var(--text-3); white-space: nowrap; transform: translateX(-1px); }
     .hm-grid { display: inline-flex; gap: 6px; }
     .hm-cell { width: 11px; height: 11px; border-radius: 3px; background: var(--heat-0); }
     .hm-cell.l1 { background: var(--heat-1); }
     .hm-cell.l2 { background: var(--heat-2); }
     .hm-cell.l3 { background: var(--heat-3); }
     .hm-cell.l4 { background: var(--heat-4); }
-    .hm-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--quiet); }
+    .hm-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--text-3); }
     .hm-legend .sw { width: 11px; height: 11px; border-radius: 3px; }
     .hm-legend .sw.l1 { background: var(--heat-1); }
     .hm-legend .sw.l2 { background: var(--heat-2); }
     .hm-legend .sw.l3 { background: var(--heat-3); }
     .hm-legend .sw.l4 { background: var(--heat-4); }
-    .heatmap-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 20px 0; }
+    .heatmap-empty { color: var(--text-2); font-size: 12.5px; text-align: center; padding: 20px 0; }
 
-    /* recent list */
     .collapse-head { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
     .collapse-head h2 { margin: 0; }
-    .collapse-head .chev { transition: transform .2s ease; color: var(--quiet); }
+    .collapse-head .chev { transition: transform .2s ease; color: var(--text-3); }
     .collapse-head.closed .chev { transform: rotate(-90deg); }
+
     .recent-list { margin-top: 14px; }
     .recent-row { display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--border); }
     .recent-row:last-child { border-bottom: 0; }
-    .recent-row .time { font-size: 11.5px; color: var(--quiet); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .recent-row .time { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
     .recent-row .txt { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .recent-row .meta { font-size: 11.5px; color: var(--muted); text-align: right; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-    .recent-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 16px 0; }
+    .recent-row .meta { font-size: 11.5px; color: var(--text-2); text-align: right; white-space: nowrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .recent-empty { color: var(--text-2); font-size: 12.5px; text-align: center; padding: 16px 0; }
 
-    /* config subnav */
-    .subnav { display: flex; gap: 4px; margin-bottom: 20px; padding: 4px; background: rgba(0,0,0,.05); border-radius: 12px; overflow-x: auto; }
+    .subnav { display: flex; gap: 4px; margin-bottom: var(--s5); padding: 4px; background: var(--bg-soft); border-radius: 999px; overflow-x: auto; }
     .subnav button {
-      flex: 1; min-width: max-content; padding: 8px 14px; border: 0; border-radius: 9px;
-      background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer;
-      transition: background .18s ease, color .18s ease;
+      flex: 1; min-width: max-content; padding: 8px 14px; border: 0; border-radius: 999px;
+      background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .2s ease, color .2s ease;
     }
-    .subnav button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .subnav button.active { background: var(--card); color: var(--green-ink); box-shadow: var(--shadow-soft); }
     .pane.hidden { display: none; }
 
-    /* provider */
     .provider-list { display: grid; gap: 10px; }
     .option {
       display: grid; grid-template-columns: 22px 1fr; gap: 12px; align-items: start;
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 14px 15px; cursor: pointer;
-      transition: border-color .18s ease, background .18s ease;
+      border: 1px solid var(--border); border-radius: var(--r-md);
+      padding: 14px 15px; cursor: pointer; background: var(--card);
+      transition: border-color .2s ease, background .2s ease;
     }
-    .option:hover { background: rgba(0,0,0,.02); }
+    .option:hover { background: var(--card-soft); }
     .option.selected { border-color: var(--accent); background: var(--accent-soft); }
     .option input { margin-top: 3px; accent-color: var(--accent); }
     .option strong { font-size: 14px; }
-    .option p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
-    .tag { display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
-    .tag.free { background: rgba(48,209,88,.14); color: #1a7f3a; }
-    .tag.online { background: rgba(10,132,255,.14); color: var(--accent); }
+    .option p { margin: 4px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.55; }
+    .tag { display: inline-block; margin-left: 7px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: 1px; }
+    .tag.free { background: var(--green-soft); color: var(--green-ink); }
+    .tag.online { background: var(--accent-soft); color: var(--green-ink); }
+    .tag.kb { background: rgba(176, 142, 232, 0.16); color: #7a5caa; }
 
     .fields { margin-top: 16px; display: grid; gap: 14px; }
     .field { display: grid; gap: 6px; }
     .field label { font-size: 12.5px; font-weight: 600; color: var(--text); }
     .field input, .field select, .field textarea {
       font: inherit; font-size: 13.5px; padding: 9px 12px;
-      border: 1px solid var(--border-strong); border-radius: 9px; background: #fff; color: var(--text);
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--card); color: var(--text);
       outline: none; transition: border-color .15s ease, box-shadow .15s ease;
     }
     .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-    .field .hint { font-size: 11.5px; color: var(--quiet); }
+    .field .hint { font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+    /* 双头区间滑块：静音门（左）与语音门（右），中间死区高亮 */
+    .duo-field { gap: 10px; }
+    .duo-head { display: flex; justify-content: space-between; align-items: center; }
+    .duo-head span { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+    .duo-head .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+    .duo-head .dot.lo { background: #fff; border: 2px solid var(--accent-strong); }
+    .duo-head .dot.hi { background: var(--accent); border: 2px solid var(--accent); }
+    .duo-range { position: relative; height: 46px; margin: 4px 6px 0; touch-action: none; }
+    .duo-track { position: absolute; top: 21px; left: 0; right: 0; height: 6px; border-radius: 999px; background: var(--border-strong); }
+    .duo-fill { position: absolute; top: 21px; height: 6px; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--green)); }
+    .duo-thumb {
+      position: absolute; top: 15px; width: 18px; height: 18px; border-radius: 50%;
+      transform: translateX(-50%); cursor: grab; outline: none;
+      box-shadow: 0 1px 3px rgba(44, 62, 50, .25), 0 0 0 3px var(--accent-soft);
+      transition: box-shadow .15s ease;
+      z-index: 2;
+    }
+    .duo-thumb:active { cursor: grabbing; box-shadow: 0 1px 3px rgba(44, 62, 50, .3), 0 0 0 5px var(--accent-soft); }
+    .duo-thumb:focus-visible { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 1px var(--accent); }
+    .duo-thumb.lo { background: #fff; border: 2px solid var(--accent-strong); }
+    .duo-thumb.hi { background: var(--accent); border: 2px solid #fff; }
+    .duo-bubble {
+      position: absolute; top: -6px; transform: translateX(-50%);
+      min-width: 30px; padding: 3px 7px; border-radius: 8px;
+      background: var(--text); color: #fff; font-size: 11px; font-weight: 700;
+      font-family: var(--font-mono); text-align: center;
+      pointer-events: none; white-space: nowrap;
+      transition: left .06s linear;
+    }
+    .duo-bubble::after {
+      content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+      border: 4px solid transparent; border-top-color: var(--text);
+    }
+    .duo-bubble .duo-unit { font-size: 8.5px; font-weight: 600; opacity: .72; margin-left: 3px; letter-spacing: .02em; }
+    .duo-scale { display: flex; justify-content: space-between; margin: 0 6px; font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); }
     .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
     .toggle-row:last-child { border-bottom: 0; }
     .toggle-row .t-txt strong { display: block; font-size: 13.5px; }
-    .toggle-row .t-txt p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+    .toggle-row .t-txt p { margin: 3px 0 0; font-size: 12px; color: var(--text-2); line-height: 1.55; }
     .switch { position: relative; width: 40px; height: 24px; flex: 0 0 auto; }
     .switch input { opacity: 0; width: 0; height: 0; }
-    .switch .slider { position: absolute; inset: 0; background: #d1d1d6; border-radius: 24px; transition: background .2s ease; }
-    .switch .slider::before { content: ''; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: transform .2s ease; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-    .switch input:checked + .slider { background: var(--green); }
+    .switch .slider { position: absolute; inset: 0; background: #d5e2da; border-radius: 24px; transition: background .2s ease; }
+    .switch .slider::before { content: ''; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: transform .2s ease; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    .switch input:checked + .slider { background: var(--accent); }
     .switch input:checked + .slider::before { transform: translateX(16px); }
 
-    .btn-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
-    .primary { padding: 9px 18px; border: 0; border-radius: 9px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s ease; }
-    .primary:hover { opacity: .9; }
+    .btn-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+    .primary { padding: 9px 18px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; transition: background .2s ease, transform .1s ease; }
+    .primary:hover { background: var(--accent-strong); }
+    .primary:active { transform: scale(.98); }
     .primary:disabled { opacity: .5; cursor: default; }
-    .ghost-btn { padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 9px; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
-    .ghost-btn:hover { background: rgba(0,0,0,.04); }
-    .status { font-size: 12.5px; color: var(--muted); }
-    .status.success { color: #1a9c47; }
+    .ghost-btn { padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--card); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .ghost-btn:hover { background: var(--card-soft); }
+    .status { font-size: 12.5px; color: var(--text-2); }
+    .status.success { color: var(--green-ink); }
     .status.error { color: var(--red); }
+    .status-block { display: block; margin-top: 6px; }
     .hidden { display: none !important; }
 
-    /* rules */
     .rule-row { display: grid; grid-template-columns: 1fr 150px 150px 34px; gap: 8px; margin-bottom: 8px; align-items: center; }
-    .rule-row input, .rule-row select { font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: #fff; }
-    .rule-row .remove-rule { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--red); font-size: 18px; cursor: pointer; }
-    .rule-row .remove-rule:hover { background: rgba(255,69,58,.1); }
+    .rule-row input, .rule-row select { font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--card); }
+    .rule-row .remove-rule { width: 30px; height: 30px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--red); font-size: 18px; cursor: pointer; }
+    .rule-row .remove-rule:hover { background: var(--red-soft); }
+    .opt-row { display: grid; grid-template-columns: 64px 1fr 32px; grid-template-areas: "def name del" "def prompt del"; gap: 6px 8px; margin-bottom: 10px; align-items: start; }
+    .opt-row .opt-default { grid-area: def; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); padding-top: 8px; white-space: nowrap; }
+    .opt-row .opt-default input { margin: 0; accent-color: var(--accent); }
+    .opt-row .opt-name { grid-area: name; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--card); }
+    .opt-row .opt-prompt { grid-area: prompt; font: inherit; font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--card); resize: vertical; line-height: 1.5; min-height: 64px; }
+    .opt-row .opt-del { grid-area: del; width: 30px; height: 30px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--red); font-size: 18px; cursor: pointer; }
+    .opt-row .opt-del:hover { background: var(--red-soft); }
 
-    /* devices list */
-    .device-list { display: grid; gap: 10px; }
-    .device-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
-    .device-avatar { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 15px; }
+    .device-list { display: grid; gap: 10px; margin-top: 14px; }
+    .device-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); }
+    .device-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; color: var(--green-ink); font-size: 15px; }
     .device-avatar svg { width: 18px; height: 18px; }
     .device-info { flex: 1; min-width: 0; }
     .device-info strong { display: block; font-size: 13.5px; }
-    .device-info small { color: var(--quiet); font-size: 11.5px; }
-    .device-state { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 10px; }
-    .device-state.on { background: rgba(48,209,88,.14); color: #1a7f3a; }
-    .device-state.total { font-size: 12px; color: var(--muted); text-align: center; padding: 14px 0; }
+    .device-info small { color: var(--text-3); font-size: 11.5px; }
+    .device-state { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+    .device-state.on { background: var(--green-soft); color: var(--green-ink); }
+    .device-state.total { font-size: 12px; color: var(--text-2); text-align: center; padding: 14px 0; }
     .device-actions { display: flex; align-items: center; gap: 8px; }
-    .rename-btn { border: 1px solid var(--border); background: #fff; border-radius: 8px; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer; font-size: 13px; color: var(--text); }
+    .rename-btn { border: 1px solid var(--border); background: var(--card); border-radius: var(--r-md); width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; font-size: 13px; color: var(--text); }
     .rename-btn svg { width: 14px; height: 14px; pointer-events: none; }
     .rename-btn:hover { background: var(--accent-soft); }
-    .device-state:not(.on) { background: #f0f0f2; color: var(--muted); }
+    .device-state:not(.on) { background: var(--bg-soft); color: var(--text-2); }
+    /* 输入模式标签：每台在线手机当前的 云端/本地/键盘 模式 */
+    .device-mode { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--bg-soft); color: var(--text-2); }
+    .device-mode.cloud { background: rgba(91, 159, 212, 0.14); color: #3a7ca8; }
+    .device-mode.local { background: var(--green-soft); color: var(--green-ink); }
+    .device-mode.keyboard { background: rgba(176, 142, 232, 0.14); color: #7a5caa; }
 
-    /* QR grid */
-    .qr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .qr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
     @media (max-width: 640px) { .qr-grid { grid-template-columns: 1fr; } }
-    .qr-card { text-align: center; padding: 18px 16px 20px; }
+    .qr-card { position: relative; text-align: center; padding: 22px 18px 24px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); }
+    .step-num {
+      position: absolute; top: 14px; left: 14px;
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
     .qr-card h3 { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
-    .qr-card p { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; }
-    .qr-card img { width: 190px; height: 190px; display: block; margin: 0 auto; border-radius: 10px; background: #fff; border: 1px solid var(--border); }
-    .qr-card.focus-flash { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); transition: box-shadow .18s ease; border-radius: 12px; }
+    .qr-card > p { margin: 0 0 14px; color: var(--text-2); font-size: 12.5px; }
+    .qr-card img { width: 190px; height: 190px; display: block; margin: 0 auto; border-radius: var(--r-md); background: #fff; border: 1px solid var(--border); }
+    .qr-card.focus-flash { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); transition: box-shadow .2s ease; border-radius: 26px; }
     @keyframes qrFlash { 0% { background: var(--accent-soft); } 100% { background: transparent; } }
     .qr-card.focus-flash { animation: qrFlash 1.2s ease-out; }
-    .qr-card .qr-loading { width: 190px; height: 190px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: #f2f2f4; border-radius: 10px; color: var(--quiet); font-size: 12px; border: 1px dashed var(--border-strong); }
-    .url-line { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: #f5f5f7; border: 1px solid var(--border); }
-    .url-line .label { font-size: 12px; color: var(--quiet); flex: 0 0 auto; }
-    .url-line code { flex: 1; font-size: 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); word-break: break-all; user-select: all; }
-    .copy-btn { padding: 6px 12px; border: 0; border-radius: 7px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; flex: 0 0 auto; }
-    .copy-btn:hover { opacity: .9; }
-    .usage-note { margin: 16px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+    .qr-card .qr-loading { width: 190px; height: 190px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: var(--bg-soft); border-radius: var(--r-md); color: var(--text-3); font-size: 12px; border: 1px dashed var(--border); }
+    .url-line { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg-soft); border: 1px dashed var(--border); }
+    .url-line .label { font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
+    .url-line code { flex: 1; font-size: 13px; font-family: var(--font-mono); color: var(--text); word-break: break-all; user-select: all; }
+    .copy-btn { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; flex: 0 0 auto; }
+    .copy-btn:hover { background: var(--accent-strong); }
+    .usage-note { margin: 16px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.6; }
+    .pair-line { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 18px; padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--card); flex-wrap: wrap; }
+    .pair-info { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .pair-line .label { color: var(--text-3); font-size: 12px; font-weight: 600; letter-spacing: .04em; flex: 0 0 auto; }
+    .pair-code { font-family: var(--font-mono); font-size: 28px; font-weight: 700; letter-spacing: .18em; color: var(--accent-strong); line-height: 1; font-variant-numeric: tabular-nums; }
+    .pair-exp { color: var(--text-3); font-size: 12px; flex: 0 0 auto; }
+    .pair-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .mini-btn { padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+    .mini-btn:hover { color: var(--text); background: var(--card-soft); }
 
-    /* help */
+    .fold { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--card); overflow: hidden; }
+    .fold + .fold { margin-top: 10px; }
+    .fold summary {
+      list-style: none; cursor: pointer; user-select: none;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 16px; font-size: 13.5px; font-weight: 600;
+    }
+    .fold summary::-webkit-details-marker { display: none; }
+    .fold summary .chev { transition: transform .2s ease; color: var(--text-3); flex: 0 0 auto; }
+    .fold[open] summary .chev { transform: rotate(180deg); }
+    .fold-body { padding: 2px 16px 16px; border-top: 1px dashed var(--border); }
     .help-step { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 10px 0; }
     .help-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+    .help-num.q { background: var(--text-3); }
     .help-step strong { display: block; margin-bottom: 4px; font-size: 14px; }
-    .help-step p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
-    .help-step .path { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 6px; background: #ececf0; color: var(--text); font-size: 12.5px; }
-    .help-callout { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: rgba(255,149,0,.1); border: 1px solid rgba(255,149,0,.25); color: #8a5a00; font-size: 12.5px; line-height: 1.6; }
+    .help-step p { margin: 0; color: var(--text-2); font-size: 12.5px; line-height: 1.6; }
+    .help-step .path { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: var(--r-sm); background: var(--bg-soft); color: var(--text); font-size: 12.5px; }
+    .help-callout { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-md); background: #f9f5e6; border: 1px dashed #e3d6a8; color: #7a6830; font-size: 12.5px; line-height: 1.6; }
+
+    .ctx-preview { margin-top: 16px; }
+    .ctx-preview > label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+    .ctx-preview-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .ctx-line { font-size: 12.5px; color: var(--text); line-height: 1.5; padding: 6px 8px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ctx-line:last-child { opacity: .75; }
+
+    .budget-edit { margin-top: 16px; }
+    .budget-edit > label { font-size: 12.5px; font-weight: 600; color: var(--text); display: block; margin-bottom: 6px; }
+    .budget-input-row { display: flex; gap: 10px; align-items: center; }
+    .budget-input-row input {
+      flex: 1; font: inherit; font-size: 13.5px; padding: 9px 12px;
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--card); color: var(--text);
+      outline: none; transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .budget-input-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .budget-input-row button { flex-shrink: 0; }
+    .budget-bar { margin-top: 12px; height: 8px; background: var(--bg-soft); border-radius: 999px; overflow: hidden; }
+    .budget-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
+    .budget-bar-fill.warn { background: #e6b84d; }
+    .budget-bar-fill.over { background: #f27979; }
+    .budget-hint { margin-top: 8px; font-size: 12px; color: var(--text-2); line-height: 1.55; }
+    .budget-hint.warn { color: #b5894b; }
+    .budget-hint.over { color: #c45c4a; }
+
+    .export-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .warn-banner { display: none; align-items: flex-start; gap: 10px; margin-bottom: var(--s4); padding: 12px 14px; border-radius: var(--r-lg); background: #fdf8e8; border: 1px solid #f0e3b5; color: #7a6830; font-size: 13px; line-height: 1.6; }
+    .warn-banner.show { display: flex; }
+    .warn-banner .warn-icon { flex: 0 0 auto; color: #b59a3f; margin-top: 1px; }
+    .log-viewer { color: #3a4a40; background: #f0f6f2; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; padding: 12px; border-radius: var(--r-md); max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin: 10px 0 0; border: 1px solid var(--border); }
 
     .fade-in { animation: fadeIn .28s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
     .toast {
       position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(16px);
-      background: rgba(30,30,32,.94); color: #fff; padding: 10px 18px; border-radius: 20px;
-      font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.2);
+      background: #2c3e32; color: #f5f9f6; padding: 10px 18px; border-radius: 999px;
+      font-size: 13px; font-weight: 600; box-shadow: 0 8px 24px rgba(44,62,50,.18);
       opacity: 0; transition: opacity .2s ease, transform .2s ease; pointer-events: none; z-index: 99;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .ctx-preview-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-    .ctx-line { font-size: 12.5px; color: var(--text); line-height: 1.5; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ctx-line:last-child { opacity: .75; }
-    .budget-input-row { display: flex; gap: 10px; align-items: center; }
-    .budget-input-row input { flex: 1; }
-    .budget-input-row button { flex-shrink: 0; }
-    .budget-bar { margin-top: 10px; height: 8px; background: #ecedef; border-radius: 6px; overflow: hidden; }
-    .budget-bar-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width .3s ease; }
-    .budget-bar-fill.warn { background: #e6a23c; }
-    .budget-bar-fill.over { background: #e5484d; }
-    .budget-hint { margin-top: 6px; font-size: 12px; color: var(--muted); }
-    .budget-hint.warn { color: #b7791f; }
-    .budget-hint.over { color: #c5221f; }
-    .export-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-    .warn-banner { display: none; align-items: center; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border-radius: 8px; background: #fff7e6; border: 1px solid #f0c36d; color: #7a5b12; font-size: 13px; }
-    .warn-banner.show { display: flex; }
-    .warn-banner .warn-icon { flex: 0 0 auto; color: #b26a00; }
-    .log-viewer { color: #d8dee9; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; padding: 12px; border-radius: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* 用量折线图 */
+    .chart-controls { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s4); }
+    .year-control { display: flex; align-items: center; gap: 8px; }
+    .year-control #chartYear { font-size: 14px; font-weight: 700; color: var(--text); min-width: 48px; text-align: center; }
+    .month-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .month-tab { padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease; }
+    .month-tab:hover { background: var(--card-soft); }
+    .month-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .chart-wrap { position: relative; min-height: 240px; }
+    .chart-svg { display: block; }
+    .chart-dot { cursor: pointer; transition: r .15s ease; }
+    .chart-dot:hover { r: 6; }
+    .chart-tooltip {
+      position: absolute; pointer-events: none; z-index: 10;
+      background: var(--card); color: var(--text); border: 1px solid var(--border);
+      border-radius: var(--r-sm); padding: 8px 10px; font-size: 12px; line-height: 1.5;
+      box-shadow: var(--shadow-card); opacity: 0; transform: translateY(4px);
+      transition: opacity .15s ease, transform .15s ease; white-space: nowrap;
+    }
+    .chart-tooltip.show { opacity: 1; transform: translateY(0); }
+    .chart-tooltip strong { display: block; margin-bottom: 2px; color: var(--text); }
+    .chart-empty { color: var(--text-2); font-size: 12.5px; text-align: center; padding: 100px 0; }
+
+    .panel > .field, .panel > .fields { margin-top: 16px; }
+    .panel h3 + .desc { margin-top: 4px; }
+
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
 </head>
@@ -323,7 +468,44 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-logo">P</div>
+        <div class="brand-logo">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#f8f1e2"/><stop offset="1" stop-color="#e6f1ec"/>
+              </linearGradient>
+              <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#d9ecfb"/><stop offset="1" stop-color="#c2e2f6"/>
+              </linearGradient>
+            </defs>
+            <rect x="18" y="18" width="476" height="476" rx="132" fill="url(#bg)"/>
+            <g fill="#fbfdff">
+              <circle cx="150" cy="438" r="46"/><circle cx="216" cy="446" r="36"/><circle cx="96" cy="446" r="28"/>
+            </g>
+            <g fill="#e07a5f">
+              <path d="M176 392 C 132 384 96 408 56 384 C 44 376 40 356 54 348 C 94 372 132 352 178 364 Z"/>
+              <path d="M56 384 C 38 398 20 394 10 404 C 30 412 52 410 66 398 Z"/>
+              <path d="M108 396 C 84 414 62 410 48 424 C 68 432 96 428 116 412 C 122 406 118 398 108 396 Z"/>
+            </g>
+            <path d="M120 236 a30 32 0 0 0 0 88" stroke="#4a9456" stroke-width="17" stroke-linecap="round"/>
+            <path d="M86 204 a66 70 0 0 0 0 152" stroke="#4a9456" stroke-width="17" stroke-linecap="round" opacity=".8"/>
+            <g transform="rotate(-13 256 262)">
+              <rect x="140" y="112" width="232" height="292" rx="46" fill="#fffdf8" stroke="#3a4059" stroke-width="16"/>
+              <line x1="218" y1="146" x2="294" y2="146" stroke="#3a4059" stroke-width="10" stroke-linecap="round" opacity=".5"/>
+              <rect x="166" y="174" width="180" height="168" rx="20" fill="url(#screen)" stroke="#3a4059" stroke-width="9"/>
+              <g>
+                <rect x="226" y="206" width="60" height="70" rx="30" fill="#5b9fd4" stroke="#3a4059" stroke-width="9"/>
+                <line x1="238" y1="228" x2="274" y2="228" stroke="#3a4059" stroke-width="6" stroke-linecap="round" opacity=".4"/>
+                <line x1="238" y1="246" x2="274" y2="246" stroke="#3a4059" stroke-width="6" stroke-linecap="round" opacity=".4"/>
+                <path d="M256 278 v12" stroke="#3a4059" stroke-width="9" stroke-linecap="round"/>
+                <path d="M230 302 q26 16 52 0" stroke="#3a4059" stroke-width="9" stroke-linecap="round" fill="none"/>
+              </g>
+              <path d="M198 240 a20 20 0 0 0 0 36" stroke="#4a9456" stroke-width="10" stroke-linecap="round"/>
+              <path d="M314 240 a20 20 0 0 1 0 36" stroke="#4a9456" stroke-width="10" stroke-linecap="round"/>
+            </g>
+            <path d="M406 132 l9 20 21 5 -18 13 6 21 -18 -12 -18 12 6 -21 -18 -13 21 -5 z" fill="#e0a72f"/>
+          </svg>
+        </div>
         <div>
           <div class="brand-name">PhVoice</div>
           <div class="brand-sub">手机当电脑麦克风</div>
@@ -338,15 +520,15 @@
         </button>
         <button class="nav-item" data-tab="devices">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
-          接入设备
+          设备接入
         </button>
-        <button class="nav-item" data-tab="config">
+        <button class="nav-item" data-tab="usage">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
+          用量与费用
+        </button>
+        <button class="nav-item" data-tab="settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          配置
-        </button>
-        <button class="nav-item" data-tab="help">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          使用帮助
+          设置
         </button>
       </div>
 
@@ -360,7 +542,7 @@
           在线设备 <b id="deviceCount">0</b> 台
         </div>
         <button class="quit-btn" id="quitBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
           退出 PhVoice
         </button>
       </div>
@@ -373,43 +555,39 @@
         <section class="page fade-in" id="tab-overview">
           <div class="page-head">
             <h1>概览</h1>
-            <p>服务状态、识别用量与最近活动，一目了然。</p>
+            <p>服务状态、今日费用与最近识别活动，一目了然。</p>
           </div>
 
           <div class="warn-banner" id="budgetBanner">
-            <svg class="warn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:18px;height:18px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span><b>本月费用已达预算上限</b>，已自动切换为「离线识别（sherpa）」以停止计费。如需恢复在线识别，请在「配置 → 识别服务」中手动切换，或提高/关闭月度预算。</span>
+            <svg class="warn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:18px;height:18px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span><b>本月费用已达预算上限</b>，已自动切换为「本地识别（sherpa）」以停止计费。如需恢复云端识别，请在「设置 → 识别服务」中手动切换，或提高/关闭月度预算。</span>
+          </div>
+
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <span class="kpi-label">今日费用</span>
+              <span class="kpi-num" id="sumToday">¥0.00000</span>
+              <span class="kpi-detail" id="sumTodayDetail">0次 · 0.0秒</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">本月费用</span>
+              <span class="kpi-num" id="sumMonth">¥0.00000</span>
+              <span class="kpi-detail" id="sumMonthDetail">0次 · 0.0秒</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">累计费用</span>
+              <span class="kpi-num" id="sumTotal">¥0.00000</span>
+              <span class="kpi-detail" id="sumTotalDetail">0次 · 0.0秒</span>
+            </div>
           </div>
 
           <div class="panel">
             <h2>服务状态 <span class="updated-at" id="ovUpdated"></span></h2>
             <div class="status-card">
-              <div class="status-item"><span class="k">识别引擎</span><span class="v" id="ovProvider">—</span></div>
+              <div class="status-item"><span class="k">识别引擎（默认）</span><span class="v" id="ovProvider">—</span></div>
               <div class="status-item"><span class="k">连接地址</span><span class="v"><code id="ovUrl">—</code><button class="copy-btn" data-copy="ovUrl">复制</button></span></div>
               <div class="status-item"><span class="k">证书</span><span class="v" id="ovCert">—</span></div>
               <div class="status-item"><span class="k">在线设备</span><span class="v" id="ovDevices">0 台</span></div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <h2>费用</h2>
-            <div class="summary-line">
-              <span class="sum">今日 <b id="sumToday">¥0.00000</b><small id="sumTodayDetail">0次 · 0.0秒</small></span>
-              <span class="sum">本月 <b id="sumMonth">¥0.00000</b><small id="sumMonthDetail">0次 · 0.0秒</small></span>
-              <span class="sum">累计 <b id="sumTotal">¥0.00000</b><small id="sumTotalDetail">0次 · 0.0秒</small></span>
-            </div>
-            <div class="heatmap" id="heatmap"><div class="heatmap-empty">暂无用量数据</div></div>
-            <p class="usage-note">当前使用 <strong id="ovProviderName">—</strong>，单价 ¥<span id="ovPrice">0.000330</span>/秒，按音频时长计费。</p>
-
-            <div class="budget-edit" style="margin-top:16px">
-              <label for="budgetInput">月度预算上限（元，0 表示不限额）</label>
-              <div class="budget-input-row">
-                <input type="number" id="budgetInput" step="1" min="0" value="0" placeholder="0"/>
-                <button class="primary" id="saveBudgetBtn">保存预算</button>
-              </div>
-              <div class="budget-bar" id="budgetBar" style="display:none">
-                <div class="budget-bar-fill" id="budgetFill" style="width:0%"></div>
-              </div>
-              <div class="budget-hint" id="budgetHint" style="display:none"></div>
             </div>
           </div>
 
@@ -420,44 +598,43 @@
             </div>
             <div class="recent-list" id="recentList"><div class="recent-empty">暂无识别记录</div></div>
           </div>
-
-          <div class="panel">
-            <h2>数据导出与日志</h2>
-            <div class="export-row">
-              <button class="primary" id="exportHistoryBtn">导出识别明细 CSV</button>
-              <button class="ghost-btn" id="exportDailyBtn">导出按日汇总 CSV</button>
-              <button class="ghost-btn" id="refreshLogsBtn">刷新日志</button>
-            </div>
-            <p class="usage-note">导出接口仅供 Mac 本机访问；明细为最近 100 次，按日汇总为最近 12 个月。</p>
-            <div class="collapse-head" id="logsHead">
-              <h2>运行日志</h2>
-              <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <pre class="log-viewer" id="logViewer">点击「刷新日志」加载最近 200 行…</pre>
-          </div>
         </section>
 
-        <!-- ============ 设备 ============ -->
+        <!-- ============ 设备接入 ============ -->
         <section class="page hidden" id="tab-devices">
           <div class="page-head">
-            <h1>接入设备</h1>
-            <p>让手机和 Mac 连上同一个局域网，用手机扫下面的二维码，就能把手机变成 Mac 的语音麦克风。第一次使用需先安装本地证书。</p>
+            <h1>设备接入</h1>
+            <p>让手机与 Mac 连上同一局域网，按流程扫码即可把手机变成语音麦克风。</p>
           </div>
 
           <div class="panel">
-            <h2>接入</h2>
-            <div class="qr-grid">
-              <div class="qr-card" id="qrCardApp">
-                <h3>正常输入</h3>
-                <p>已配置过证书的手机扫这里</p>
-                <div class="qr-loading" id="appQrLoading">正在生成…</div>
-                <img id="appQrImg" class="hidden" alt="PhVoice 使用二维码"/>
+            <h2>接入流程</h2>
+            <p class="desc">新设备先扫「首次配置」安装本地证书；已配置过的设备直接扫「正常输入」。</p>
+            <div class="pair-line">
+              <div class="pair-info">
+                <span class="label">当前配对码</span>
+                <span class="pair-code" id="pairCode">—</span>
+                <span class="pair-exp" id="pairExp"></span>
               </div>
-              <div class="qr-card" id="qrCardSetup">
+              <div class="pair-actions">
+                <button class="copy-btn" data-copy="pairCode">复制</button>
+                <button class="mini-btn" id="pairRefresh">刷新</button>
+              </div>
+            </div>
+            <div class="qr-grid">
+              <div class="qr-card step-card" id="qrCardSetup">
+                <span class="step-num">1</span>
                 <h3>首次配置</h3>
                 <p>新手机先扫这里安装本地证书</p>
                 <div class="qr-loading" id="setupQrLoading">正在生成…</div>
                 <img id="setupQrImg" class="hidden" alt="PhVoice 证书二维码"/>
+              </div>
+              <div class="qr-card step-card" id="qrCardApp">
+                <span class="step-num">2</span>
+                <h3>正常输入</h3>
+                <p>已配置过证书的手机扫这里</p>
+                <div class="qr-loading" id="appQrLoading">正在生成…</div>
+                <img id="appQrImg" class="hidden" alt="PhVoice 使用二维码"/>
               </div>
             </div>
             <div class="url-line">
@@ -466,6 +643,27 @@
               <button class="copy-btn" data-copy="phoneUrl">复制</button>
             </div>
             <p class="usage-note" id="qrNote">正在读取服务状态…</p>
+          </div>
+
+          <div class="panel">
+            <details class="fold">
+              <summary>首次配置指引 <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></summary>
+              <div class="fold-body">
+                <h3>iPhone / iPad</h3>
+                <div class="help-step"><span class="help-num">1</span><div><strong>扫描「首次配置」二维码</strong><p>在「接入设备」页用手机扫第一个二维码，打开安装证书页面。</p></div></div>
+                <div class="help-step"><span class="help-num">2</span><div><strong>下载安装描述文件</strong><p>Safari 会提示「此网站正尝试下载一个配置描述文件」，请点「允许」。</p></div></div>
+                <div class="help-step"><span class="help-num">3</span><div><strong>安装描述文件</strong><span class="path">设置 &gt; 通用 &gt; VPN 与设备管理</span><p>在「已下载的描述文件」里找到 <strong>PhVoice 本地证书</strong>，点进去并选择「安装」。</p></div></div>
+                <div class="help-step"><span class="help-num">4</span><div><strong>信任根证书</strong><span class="path">设置 &gt; 通用 &gt; 关于本机 &gt; 证书信任设置</span><p>启用「PhVoice 本地根证书」。如果这里是空的，说明第 3 步还没装成功。</p></div></div>
+                <div class="help-step"><span class="help-num">5</span><div><strong>返回并扫码使用</strong><p>回到「接入设备」页，用「正常输入」二维码进入语音输入。</p></div></div>
+                <div class="help-callout">证书安装只需一次。若更换 Wi-Fi 或 Mac 的 IP 变化，重新扫描「正常输入」二维码即可，证书无需重装。</div>
+
+                <h3 style="margin-top:18px">Android 手机 / 平板</h3>
+                <div class="help-step"><span class="help-num">1</span><div><strong>扫描「首次配置」二维码</strong><p>在 Chrome / 系统浏览器打开证书页面，按提示下载并安装 CA 证书。</p></div></div>
+                <div class="help-step"><span class="help-num">2</span><div><strong>在系统设置里信任证书</strong><p>不同品牌路径可能不同，可在「设置 &gt; 安全 &gt; 加密与凭据 &gt; 安装证书」找到，部分手机在「设置 &gt; 密码与安全 &gt; 加密与凭据」。以系统实际菜单为准。</p></div></div>
+                <div class="help-step"><span class="help-num">3</span><div><strong>回到「正常输入」扫码</strong><p>证书信任后，用正常的二维码即可调用麦克风。</p></div></div>
+                <div class="help-callout">若安装证书后仍无法使用，请确认「正常输入」二维码对应的地址是 HTTPS（https:// 开头）。开发调试时 Mac 本机走 HTTP，但手机必须走 HTTPS。</div>
+              </div>
+            </details>
           </div>
 
           <div class="panel">
@@ -480,33 +678,180 @@
             </div>
             <div class="device-list" id="knownDeviceList"><div class="device-state total">暂无已命名设备</div></div>
           </div>
+
+          <div class="panel">
+            <details class="fold">
+              <summary>常见问题 <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></summary>
+              <div class="fold-body">
+                <div class="help-step"><span class="help-num q">?</span><div><strong>手机收不到声音 / 无法上屏？</strong><p>确认手机和 Mac 在同一个 Wi-Fi，且 Mac 防火墙允许 PhVoice 接收连接。</p></div></div>
+                <div class="help-step"><span class="help-num q">?</span><div><strong>麦克风权限被拒绝？</strong><p>在手机浏览器设置中允许 PhVoice 网页使用麦克风。</p></div></div>
+                <div class="help-step"><span class="help-num q">?</span><div><strong>识别费用怎么算？</strong><p>云端模式按音频时长计费（元/秒），单价可在「用量与费用」中查看；本地模式完全免费。</p></div></div>
+              </div>
+            </details>
+          </div>
         </section>
 
-        <!-- ============ 配置 ============ -->
-        <section class="page hidden" id="tab-config">
+        <!-- ============ 用量与费用 ============ -->
+        <section class="page hidden" id="tab-usage">
           <div class="page-head">
-            <h1>配置</h1>
-            <p>按类型分组：识别服务、输入规则、上下文与网络。</p>
+            <h1>用量与费用</h1>
+            <p>用量趋势、月度预算与数据导出。</p>
+          </div>
+
+          <div class="panel">
+            <h2>费用汇总</h2>
+            <div class="stat-table">
+              <div class="stat-row"><span class="stat-k">今日</span><span class="stat-v" id="uSumToday">¥0.00000</span><span class="stat-d" id="uSumTodayDetail">0次 · 0.0秒</span></div>
+              <div class="stat-row"><span class="stat-k">本月</span><span class="stat-v" id="uSumMonth">¥0.00000</span><span class="stat-d" id="uSumMonthDetail">0次 · 0.0秒</span></div>
+              <div class="stat-row"><span class="stat-k">累计</span><span class="stat-v" id="uSumTotal">¥0.00000</span><span class="stat-d" id="uSumTotalDetail">0次 · 0.0秒</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>用量趋势</h2>
+            <div class="chart-controls">
+              <div class="year-control">
+                <button class="mini-btn" id="prevYear">‹</button>
+                <span id="chartYear">2026</span>
+                <button class="mini-btn" id="nextYear">›</button>
+              </div>
+              <div class="month-tabs" id="monthTabs"></div>
+            </div>
+            <div class="chart-wrap" id="usageChart"><div class="chart-empty">暂无用量数据</div></div>
+            <p class="usage-note">默认引擎 <strong id="ovProviderName">—</strong>，单价 ¥<span id="ovPrice">0.000330</span>/秒，按音频时长计费。</p>
+          </div>
+
+          <div class="panel">
+            <h2>月度预算</h2>
+            <p class="desc">设置上限后，当月费用达到阈值会自动降级为本地识别，避免超额。</p>
+            <div class="budget-edit">
+              <label for="budgetInput">月度预算上限（元，0 表示不限额）</label>
+              <div class="budget-input-row">
+                <input type="number" id="budgetInput" step="1" min="0" value="0" placeholder="0"/>
+                <button class="primary" id="saveBudgetBtn">保存预算</button>
+              </div>
+              <div class="budget-bar" id="budgetBar" style="display:none">
+                <div class="budget-bar-fill" id="budgetFill" style="width:0%"></div>
+              </div>
+              <div class="budget-hint" id="budgetHint" style="display:none"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>数据导出</h2>
+            <p class="desc">导出接口仅供 Mac 本机访问；明细为最近 100 次，按日汇总为最近 12 个月。</p>
+            <div class="export-row">
+              <button class="primary" id="exportHistoryBtn">导出识别明细 CSV</button>
+              <button class="ghost-btn" id="exportDailyBtn">导出按日汇总 CSV</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 设置 ============ -->
+        <section class="page hidden" id="tab-settings">
+          <div class="page-head">
+            <div class="ph-left">
+              <h1>设置</h1>
+              <p>识别服务、输入规则、触控板与系统选项。</p>
+            </div>
+            <button class="primary icon-btn" id="headerSaveBtn" type="button" aria-label="保存当前配置" title="保存当前配置">
+              <svg class="ico" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+              </svg>
+            </button>
           </div>
 
           <div class="subnav" id="configSubnav">
             <button data-pane="asr" class="active">识别服务</button>
+            <button data-pane="optimize">优化模板</button>
             <button data-pane="rules">输入规则</button>
-            <button data-pane="vocab">上下文</button>
-            <button data-pane="network">网络与安全</button>
             <button data-pane="trackpad">触控板</button>
-            <button data-pane="vad">静音门限</button>
+            <button data-pane="system">系统</button>
           </div>
 
           <div class="pane" id="pane-asr">
             <div class="panel">
-              <h2>识别服务（ASR）</h2>
-              <p class="desc">离线免费、隐私最好；在线精度高、按量计费。切换后立即生效，正在进行的识别仍使用旧配置。</p>
+              <h2>输入模式</h2>
+              <p class="desc">云端精度高、按量计费；本地免费、隐私最好；键盘用手机自带输入法。此处为<b>默认输入模式</b>——新手机默认使用，已在线的手机可在对话页右上角单独切换，互不影响。切换后下一次识别生效。</p>
               <div class="provider-list" id="providerList"></div>
               <div class="fields" id="providerFields"></div>
               <div class="btn-row">
-                <button class="primary" id="saveAsrBtn">保存识别配置</button>
+                <button class="primary" id="saveAsrBtn">保存输入模式</button>
                 <span class="status" id="asrStatus"></span>
+              </div>
+            </div>
+
+            <div class="panel" id="ctxCard">
+              <h2>上下文增强</h2>
+              <p class="desc">仅对云端识别（百炼）生效。开启后会把最近上屏文本作为上下文传给识别，用于提升人名、专有名词、同音词准确率；若识别质量下降，建议保持关闭。</p>
+              <div class="toggle-row">
+                <div class="t-txt"><strong>启用上下文</strong><p>最多携带最近 5 条 / 400 字；对识别质量无把握时保持关闭。</p></div>
+                <label class="switch"><input type="checkbox" id="ctxEnabled"/><span class="slider"></span></label>
+              </div>
+              <div class="field">
+                <label for="vocabText">自定义热词 / 专有名词（每行一个）</label>
+                <textarea id="vocabText" rows="5" placeholder="例如：PhVoice&#10;Alice&#10;李雷"></textarea>
+                <span class="hint">云端识别会把以下词作为热词提示，提高专有名词准确率。</span>
+              </div>
+              <div class="ctx-preview">
+                <label>最近上下文（将作为云端识别的上屏文本）</label>
+                <div id="ctxPreview" class="ctx-preview-list"><div class="recent-empty">暂无识别记录</div></div>
+              </div>
+              <div class="btn-row">
+                <button class="primary" id="saveCtxBtn">保存上下文</button>
+                <span class="status" id="ctxStatus"></span>
+              </div>
+            </div>
+
+            <!-- 静音门限（VAD）：仅云端生效的省流量/省钱开关，随「输入模式」一起保存 -->
+            <div class="panel" id="vadCard">
+              <h2>静音门限（VAD）</h2>
+              <p class="desc">仅对<b>云端</b>识别生效：手机端只在检测到声音时上行音频，静音帧被丢弃，既省流量也省云端按音频时长计费的费用。</p>
+              <div class="toggle-row">
+                <div class="t-txt"><strong>启用静音门限</strong><p>关闭则全量上行（不省费）；开启后阈值过大可能切掉轻声，建议保持默认。</p></div>
+                <label class="switch"><input type="checkbox" id="vadEnabled"/><span class="slider"></span></label>
+              </div>
+              <div class="fields">
+                <div class="field">
+                  <label for="vadThreshold">能量门限（0~1，越大越严格）</label>
+                  <input type="number" id="vadThreshold" step="0.001" min="0.001" max="1" value="0.006"/>
+                  <span class="hint">帧 RMS 能量超过该值才判定为“说话”。单位：归一化 RMS（0~1，相对满幅的比值），与本地识别的 0~32767 刻度不同。太小会把空调/键盘声带上来，太大可能漏掉轻声。</span>
+                </div>
+                <div class="field">
+                  <label for="vadHoldMs">语音结束拖尾（ms）</label>
+                  <input type="number" id="vadHoldMs" step="10" min="0" max="2000" value="260"/>
+                  <span class="hint">检测到声音结束后仍保留多久再停发，避免把句尾轻声截断。</span>
+                </div>
+              </div>
+              <div class="hint">保存时随「保存输入模式」一并提交（仅当前选中云端时）。保存后手机下次录音生效。</div>
+            </div>
+
+            <!-- 离线模型：本地识别（SenseVoice）依赖，不打包进应用，此处下载一次即可离线免费使用 -->
+            <div class="panel" id="modelCard">
+              <h2>离线模型</h2>
+              <p class="desc">本地识别（SenseVoice）依赖离线模型（约 230MB），不打包进应用，需下载一次。下载后即可离线、免费、不出网使用。</p>
+              <div class="btn-row">
+                <button class="primary" id="downloadModelBtn">下载离线模型（约 230MB）</button>
+                <span class="status" id="modelStatus"></span>
+              </div>
+              <div class="hint" id="modelProgress" style="display:none"></div>
+            </div>
+          </div>
+
+          <div class="pane hidden" id="pane-optimize">
+            <div class="panel" id="optimizeCard">
+              <h2>优化模板</h2>
+              <p class="desc">手机端「优化」按钮使用的<b>优化模板</b>。每条 = 名称 + 提示词；手机端每次可手动选一条，未选则用「默认」那条。模型全局统一，复用百炼 API Key（不计费）。</p>
+              <div class="field">
+                <label for="optimizeModel">优化模型</label>
+                <input type="text" id="optimizeModel" placeholder="qwen-turbo"/>
+                <span class="hint">优化调用的模型（百炼 OpenAI 兼容端点），默认 qwen-turbo（便宜、够用；要更高质可改 qwen-plus）。</span>
+              </div>
+              <div id="optimizePoolList"></div>
+              <div class="btn-row">
+                <button class="ghost-btn" id="addOptimizeBtn">+ 添加模板</button>
+                <button class="primary" id="saveOptimizeBtn">保存优化模板</button>
+                <span class="status" id="optimizeStatus"></span>
               </div>
             </div>
           </div>
@@ -524,42 +869,6 @@
             </div>
           </div>
 
-          <div class="pane hidden" id="pane-vocab">
-            <div class="panel">
-              <h2>上下文增强</h2>
-              <p class="desc">默认关闭。开启后会把最近上屏文本作为上下文传给在线识别，用于提升人名、专有名词、同音词准确率；若识别质量下降，建议保持关闭。</p>
-              <div class="toggle-row">
-                <div class="t-txt"><strong>启用上下文</strong><p>仅对在线识别（百炼）生效，最多携带最近 5 条 / 400 字；对识别质量无把握时保持关闭。</p></div>
-                <label class="switch"><input type="checkbox" id="ctxEnabled"/><span class="slider"></span></label>
-              </div>
-              <div class="field" style="margin-top:16px">
-                <label for="vocabText">自定义热词 / 专有名词（每行一个）</label>
-                <textarea id="vocabText" rows="5" placeholder="例如：PhVoice&#10;Alice&#10;李雷"></textarea>
-                <span class="hint">在线识别会把以下词作为热词提示，提高专有名词准确率。</span>
-              </div>
-              <div class="ctx-preview" style="margin-top:16px">
-                <label>最近上下文（将作为在线识别的上屏文本）</label>
-                <div id="ctxPreview" class="ctx-preview-list"><div class="recent-empty">暂无识别记录</div></div>
-              </div>
-              <div class="btn-row">
-                <button class="primary" id="saveCtxBtn">保存上下文</button>
-                <span class="status" id="ctxStatus"></span>
-              </div>
-            </div>
-          </div>
-
-          <div class="pane hidden" id="pane-network">
-            <div class="panel">
-              <h2>网络与安全</h2>
-              <p class="desc">本控制面板仅允许 Mac 本机访问；手机需与 Mac 连接同一 Wi-Fi。</p>
-              <div class="status-card" style="margin-bottom:0">
-                <div class="status-item"><span class="k">证书</span><span class="v" id="netCert">—</span></div>
-                <div class="status-item"><span class="k">访问控制</span><span class="v"><span class="mini-tag">仅本机 loopback</span></span></div>
-              </div>
-              <p class="usage-note" id="netNote">正在读取服务状态…</p>
-            </div>
-          </div>
-
           <div class="pane hidden" id="pane-trackpad">
             <div class="panel">
               <h2>触控板（鼠标模拟）</h2>
@@ -569,6 +878,11 @@
                   <label for="tpSensitivity">灵敏度（倍率）</label>
                   <input type="number" id="tpSensitivity" step="0.1" min="0" value="1.8"/>
                   <span class="hint">手在触控板上移动多少像素 → 真实鼠标移动多少。越大越灵敏，建议 1.0~2.5。</span>
+                </div>
+                <div class="field">
+                  <label for="tpScrollSensitivity">滚轮灵敏度（倍率）</label>
+                  <input type="number" id="tpScrollSensitivity" step="0.1" min="0" value="1.8"/>
+                  <span class="hint">双指滚动 / 红点摇杆滚轮的速度倍率，与光标灵敏度分开调节。建议 1.0~2.5。</span>
                 </div>
                 <div class="field">
                   <label for="tpEdgeZonePx">边缘检测宽度（px）</label>
@@ -603,97 +917,54 @@
             </div>
           </div>
 
-          <div class="pane hidden" id="pane-vad">
+          <div class="pane hidden" id="pane-system">
             <div class="panel">
-              <h2>静音门限（VAD）</h2>
-              <p class="desc">手机端只在检测到声音时上行音频，静音帧被丢弃。既省流量，也省在线识别的费用（按音频时长计费）。</p>
+              <h2>常规</h2>
+              <p class="desc">开机自启与端口设定。端口改动后会保存到 config.json 并自动重启服务。</p>
               <div class="toggle-row">
-                <div class="t-txt"><strong>启用静音门限</strong><p>关闭则全量上行（不省费）；开启后阈值过大可能切掉轻声，建议保持默认。</p></div>
-                <label class="switch"><input type="checkbox" id="vadEnabled"/><span class="slider"></span></label>
+                <div class="t-txt"><strong>开机自启</strong><p>勾选后 Mac 登录时自动启动 PhVoice。已签名/打包的 App 可正常设置；当前未签名的开发运行可能被系统拒绝。</p></div>
+                <label class="switch"><input type="checkbox" id="loginItem"/><span class="slider"></span></label>
               </div>
-              <div class="fields" style="margin-top:16px">
+              <span class="status status-block" id="loginItemStatus"></span>
+
+              <div class="divider"></div>
+
+              <h3>服务端口</h3>
+              <p class="desc">http 为证书安装页端口，https 为语音输入页与连接通道端口。修改保存后自动重启；<strong>手机需重新扫码并配对一次</strong>（旧地址已失效）。</p>
+              <div class="fields">
                 <div class="field">
-                  <label for="vadThreshold">能量门限（0~1，越大越严格）</label>
-                  <input type="number" id="vadThreshold" step="0.001" min="0.001" max="1" value="0.006"/>
-                  <span class="hint">帧 RMS 能量超过该值才判定为“说话”。太小会把空调/键盘声带上来，太大可能漏掉轻声。</span>
+                  <label for="httpPort">HTTP 端口</label>
+                  <input type="number" id="httpPort" min="1" max="65535" placeholder="9898"/>
+                  <span class="hint">首次配置 / 证书安装页。默认 9898。</span>
                 </div>
                 <div class="field">
-                  <label for="vadHoldMs">语音结束拖尾（ms）</label>
-                  <input type="number" id="vadHoldMs" step="10" min="0" max="2000" value="260"/>
-                  <span class="hint">检测到声音结束后仍保留多久再停发，避免把句尾轻声截断。</span>
+                  <label for="httpsPort">HTTPS 端口</label>
+                  <input type="number" id="httpsPort" min="1" max="65535" placeholder="9899"/>
+                  <span class="hint">语音输入页与 WebSocket。默认 9899。</span>
                 </div>
               </div>
               <div class="btn-row">
-                <button class="primary" id="saveVadBtn">保存静音门限</button>
-                <span class="status" id="vadStatus"></span>
+                <button class="primary" id="savePortsBtn">保存并重启</button>
+                <span class="status" id="portsStatus"></span>
               </div>
-            </div>
-          </div>
-        </section>
 
-        <!-- ============ 使用帮助 ============ -->
-        <section class="page hidden" id="tab-help">
-          <div class="page-head">
-            <h1>使用帮助</h1>
-            <p>只需在手机上配置一次，之后即可直接扫码使用。</p>
-          </div>
+              <div class="divider"></div>
 
-          <div class="panel">
-            <h2>首次配置（iPhone / iPad）</h2>
-            <div class="help-step">
-              <span class="help-num">1</span>
-              <div><strong>扫描「首次配置」二维码</strong><p>在「接入设备」页用手机扫第一个二维码，打开安装证书页面。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num">2</span>
-              <div><strong>下载安装描述文件</strong><p>Safari 会提示「此网站正尝试下载一个配置描述文件」，请点「允许」。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num">3</span>
-              <div><strong>安装描述文件</strong><span class="path">设置 &gt; 通用 &gt; VPN 与设备管理</span><p>在「已下载的描述文件」里找到 <strong>PhVoice 本地证书</strong>，点进去并选择「安装」。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num">4</span>
-              <div><strong>信任根证书</strong><span class="path">设置 &gt; 通用 &gt; 关于本机 &gt; 证书信任设置</span><p>启用「PhVoice 本地根证书」。如果这里是空的，说明第 3 步还没装成功。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num">5</span>
-              <div><strong>返回并扫码使用</strong><p>回到「接入设备」页，用「正常输入」二维码进入语音输入。</p></div>
-            </div>
-            <div class="help-callout">证书安装只需一次。若更换 Wi-Fi 或 Mac 的 IP 变化，重新扫描「正常输入」二维码即可，证书无需重装。</div>
-          </div>
+              <h3>网络与安全</h3>
+              <p class="desc" style="margin-top:4px">本控制面板仅允许 Mac 本机访问；手机需与 Mac 连接同一 Wi-Fi。</p>
+              <div class="status-card">
+                <div class="status-item"><span class="k">证书</span><span class="v" id="netCert">—</span></div>
+                <div class="status-item"><span class="k">访问控制</span><span class="v"><span class="mini-tag">仅本机 loopback</span></span></div>
+              </div>
+              <p class="usage-note" id="netNote">正在读取服务状态…</p>
 
-          <div class="panel">
-            <h2>Android 手机 / 平板</h2>
-            <p class="desc">安卓浏览器默认不信任本地 HTTPS 证书，语音输入需要 HTTPS。</p>
-            <div class="help-step">
-              <span class="help-num">1</span>
-              <div><strong>扫描「首次配置」二维码</strong><p>在 Chrome / 系统浏览器打开证书页面，按提示下载并安装 CA 证书。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num">2</span>
-              <div><strong>在系统设置里信任证书</strong><p>不同品牌路径可能不同，可在「设置 &gt; 安全 &gt; 加密与凭据 &gt; 安装证书」找到，部分手机在「设置 &gt; 密码与安全 &gt; 加密与凭据」。以系统实际菜单为准。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num">3</span>
-              <div><strong>回到「正常输入」扫码</strong><p>证书信任后，用正常的二维码即可调用麦克风。</p></div>
-            </div>
-            <div class="help-callout">若安装证书后仍无法使用，请确认「正常输入」二维码对应的地址是 HTTPS（https:// 开头）。开发调试时 Mac 本机走 HTTP，但手机必须走 HTTPS。</div>
-          </div>
+              <div class="divider"></div>
 
-          <div class="panel">
-            <h2>常见问题</h2>
-            <div class="help-step">
-              <span class="help-num" style="background:#8e8e93">?</span>
-              <div><strong>手机收不到声音 / 无法上屏？</strong><p>确认手机和 Mac 在同一个 Wi-Fi，且 Mac 防火墙允许 PhVoice 接收连接。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num" style="background:#8e8e93">?</span>
-              <div><strong>麦克风权限被拒绝？</strong><p>在手机浏览器设置中允许 PhVoice 网页使用麦克风。</p></div>
-            </div>
-            <div class="help-step">
-              <span class="help-num" style="background:#8e8e93">?</span>
-              <div><strong>识别费用怎么算？</strong><p>在线模式按音频时长计费（元/秒），单价可在「配置」中调整；离线模式完全免费。</p></div>
+              <h3>运行日志</h3>
+              <div class="btn-row">
+                <button class="ghost-btn" id="refreshLogsBtn">刷新日志</button>
+              </div>
+              <pre class="log-viewer" id="logViewer">点击「刷新日志」加载最近 200 行…</pre>
             </div>
           </div>
         </section>
@@ -736,8 +1007,10 @@
     function applyHash() {
       const h = (location.hash || '').replace('#', '')
       if (!h) return
-      const [tab, sub] = h.split('/')
-      if (['overview', 'config', 'devices', 'help'].includes(tab)) {
+      const [rawTab, sub] = h.split('/')
+      // 旧 hash 兼容：#config→settings（配置页曾叫 config，现为 settings）、#help→devices（使用帮助已并入接入设备页）
+      const tab = rawTab === 'config' ? 'settings' : rawTab === 'help' ? 'devices' : rawTab
+      if (['overview', 'devices', 'usage', 'settings'].includes(tab)) {
         showTab(tab)
         if (tab === 'devices' && (sub === 'app' || sub === 'setup')) {
           setTimeout(() => focusQrCard(sub), 120)
@@ -745,12 +1018,39 @@
       }
     }
 
-    // ================= 子导航（配置） =================
+    // ================= 子导航（设置） =================
+    // 右上角「保存」按钮：代理当前激活 pane 的主保存逻辑（复用各 pane 底部保存按钮的监听），
+    // 底部按钮已用 CSS 隐藏，只保留其状态反馈（status）。
+    const PANE_SAVE = {
+      asr: ['saveAsrBtn', 'saveCtxBtn'],       // 输入模式 + 上下文增强（云端时含静音门限）
+      optimize: ['saveOptimizeBtn'],
+      rules: ['saveRulesBtn'],
+      trackpad: ['saveTrackpadBtn'],
+      system: ['savePortsBtn'],
+    }
+    const PANE_SAVE_LABEL = { asr: '保存输入模式', optimize: '保存优化模板', rules: '保存规则', vad: '保存静音门限', trackpad: '保存触控板', system: '保存并重启' }
+    let currentPane = 'asr'
+    function updateHeaderSave() {
+      const btn = $('headerSaveBtn'); if (!btn) return
+      // 只更新无障碍/悬停标签，绝不动 textContent——那会清空里面的 SVG 图标
+      const label = PANE_SAVE_LABEL[currentPane] || '保存'
+      btn.setAttribute('aria-label', label)
+      btn.setAttribute('title', label)
+    }
     function showPane(name) {
+      currentPane = name
       document.querySelectorAll('#configSubnav button').forEach((b) => b.classList.toggle('active', b.dataset.pane === name))
       document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('hidden', p.id !== 'pane-' + name))
+      updateHeaderSave()
     }
     document.querySelectorAll('#configSubnav button').forEach((b) => b.addEventListener('click', () => showPane(b.dataset.pane)))
+    $('headerSaveBtn').addEventListener('click', () => {
+      for (const btnId of (PANE_SAVE[currentPane] || [])) {
+        const btn = $(btnId)
+        if (btn && !btn.disabled) btn.click()
+      }
+    })
+    updateHeaderSave()
 
     // ================= 复制 =================
     function copyText(text, label) {
@@ -765,14 +1065,18 @@
       catch (e) { setStatus(false, '服务未响应') }
     }
 
-    // ================= 配置：ASR（provider schema 动态渲染） =================
+    // ================= 配置：ASR =================
     const PROVIDER_SCHEMA = [
       {
-        id: 'sherpa', name: '离线 ASR', tag: 'free', tagText: '免费', desc: '本地 sherpa-onnx，完全离线、隐私最好；适合日常短句，长难句精度一般。',
-        fields: []
+        id: 'sherpa', name: '本地 ASR', tag: 'free', tagText: '免费', desc: '本机 sherpa-onnx，完全本地运行、隐私最好；适合日常短句，长难句精度一般。',
+        fields: [
+          { key: 'silenceBreakMs', label: '静音断句阈值（ms）', type: 'number', step: '50', min: '100', max: '3000', def: 450, hint: '停顿超过此值判定一句话结束（默认 450）。越小越“碎”。' },
+          { type: 'duoRange', loKey: 'silenceRms', hiKey: 'voiceRms', loLabel: '静音能量阈值', hiLabel: '语音能量阈值', loDef: 28, hiDef: 300, min: 0, max: 800, step: 1, hint: '三段：低于 28 判静音（累计停顿、准备切句）；28~300 是死区，保持上一刻状态——既不切句、也不开启识别；高于 300 才算真说话（开启一段送入识别）。案例：句间呼吸能量掉到 150（死区内）不会把一句切碎；安静时翻纸声 80（死区内）不会误当成说话。单位：RMS（16-bit 采样幅度，0~800 常用区间）。' },
+          { key: 'maxSegmentMs', label: '最长分段（ms）', type: 'number', step: '1000', min: '1000', max: '60000', def: 12000, hint: '即使不停顿，超过此时长也强制切一段，避免长时间无回显（默认 12000）。' },
+        ]
       },
       {
-        id: 'bailian', name: '阿里云百炼实时识别', tag: 'online', tagText: '推荐', desc: '在百炼控制台获取 sk- 开头的 API Key 即可，精度高，按量计费。',
+        id: 'bailian', name: '云端', tag: 'online', tagText: '推荐', desc: '阿里云百炼实时识别，精度高、边说边出字，按音频时长计费。',
         fields: [
           { key: 'apiKey', label: '百炼 API Key', type: 'password', placeholder: 'sk-...', hint: '阿里云百炼控制台「API Key 管理」中创建。', secret: true },
           { key: 'model', label: '模型', type: 'text', placeholder: 'qwen-audio-3.0-asr-flash-streaming', hint: 'Qwen-ASR-Flash 流式，按音频时长计费。' },
@@ -780,6 +1084,14 @@
           { key: 'gateway', label: '网关', type: 'text', placeholder: 'wss://...', hint: '默认走百炼公共网关，专属工作区则为独立地址。' },
           { key: 'pricePerSecond', label: '单价（元/秒）', type: 'number', step: '0.000001', min: '0', def: 0.00033, hint: '按音频时长计费。默认 0.00033 元/秒，可用专属工作区网关时调整。' },
           { key: 'maxSentenceSilence', label: '静音断句阈值（ms）', type: 'number', step: '100', min: '200', max: '6000', def: 1300, hint: '停顿多久才算一句话结束（200–6000）。越小越“碎”（适合逐句确认），越大越连贯（适合长句口述）。默认 1300。' },
+        ]
+      },
+      {
+        id: 'keyboard', name: '键盘', tag: 'kb', tagText: '输入法', desc: '用手机自带输入法打字或语音输入，不占 PhVoice 录音通道；文字/附件上屏后可选自动回车。', cfgPath: 'compose',
+        fields: [
+          { key: 'fileMaxCount', label: '附件数量上限', type: 'number', step: '1', min: '1', max: '20', def: 5, hint: '一次最多携带的附件数（默认 5）。' },
+          { key: 'fileMaxMB', label: '单附件上限（MB）', type: 'number', step: '1', min: '1', max: '100', def: 20, hint: '单个文件超过此大小会被拒绝（默认 20MB）。' },
+          { key: 'sendAfterPaste', label: '上屏后自动发送', type: 'checkbox', def: false, hint: '开启后文字/附件上屏完成即自动模拟回车发送；否则只上屏不回车（发送由你点「执行」）。' },
         ]
       }
     ]
@@ -803,15 +1115,114 @@
       return checked ? checked.value : 'sherpa'
     }
 
+    // 双头滑块的当前值（loKey/hiKey → 数值），供保存时读取
+    let duoRangeState = {}
+
+    function clampRange(v, min, max) {
+      const n = Number(v)
+      if (!Number.isFinite(n)) return min
+      return Math.min(max, Math.max(min, n))
+    }
+
+    function initDuoRange(f, cfg) {
+      const range = $('duoRange'); if (!range) return
+      const lo = $('duoThumbLo'), hi = $('duoThumbHi')
+      const fill = $('duoFill'), bLo = $('duoBubbleLo'), bHi = $('duoBubbleHi')
+      if (!lo || !hi) return
+      const { min, max } = f
+      const state = {
+        [f.loKey]: clampRange(cfg[f.loKey] != null ? cfg[f.loKey] : f.loDef, min, max),
+        [f.hiKey]: clampRange(cfg[f.hiKey] != null ? cfg[f.hiKey] : f.hiDef, min, max),
+      }
+      duoRangeState = state
+
+      const pct = (v) => ((v - min) / (max - min)) * 100
+      function render() {
+        const loPct = pct(state[f.loKey]), hiPct = pct(state[f.hiKey])
+        lo.style.left = loPct + '%'; hi.style.left = hiPct + '%'
+        fill.style.left = loPct + '%'; fill.style.width = (hiPct - loPct) + '%'
+        bLo.style.left = loPct + '%'; bLo.innerHTML = state[f.loKey] + '<span class="duo-unit">RMS</span>'
+        bHi.style.left = hiPct + '%'; bHi.innerHTML = state[f.hiKey] + '<span class="duo-unit">RMS</span>'
+        lo.setAttribute('aria-valuenow', state[f.loKey])
+        hi.setAttribute('aria-valuenow', state[f.hiKey])
+      }
+      render()
+
+      function valueFromClientX(clientX) {
+        const rect = range.getBoundingClientRect()
+        const ratio = (clientX - rect.left) / rect.width
+        return Math.round(min + clampRange(ratio, 0, 1) * (max - min))
+      }
+
+      function bind(thumb, key, isLo) {
+        const onMove = (e) => {
+          let v = valueFromClientX(e.clientX)
+          // 左右互锁：左头永不超过右头、右头永不低于左头，死区始终存在
+          v = isLo ? Math.min(v, state[f.hiKey] - 1) : Math.max(v, state[f.loKey] + 1)
+          state[key] = clampRange(v, min, max)
+          render()
+        }
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove)
+          window.removeEventListener('pointerup', onUp)
+        }
+        thumb.addEventListener('pointerdown', (e) => {
+          e.preventDefault()
+          try { thumb.setPointerCapture(e.pointerId) } catch {}
+          onMove(e)
+          window.addEventListener('pointermove', onMove)
+          window.addEventListener('pointerup', onUp)
+        })
+        thumb.addEventListener('keydown', (e) => {
+          const step = e.shiftKey ? 10 : 1
+          let v = state[key]
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') v -= step
+          else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') v += step
+          else return
+          e.preventDefault()
+          v = isLo ? Math.min(v, state[f.hiKey] - 1) : Math.max(v, state[f.loKey] + 1)
+          state[key] = clampRange(v, min, max)
+          render()
+        })
+      }
+      bind(lo, f.loKey, true)
+      bind(hi, f.hiKey, false)
+    }
+
     function renderFields() {
       const p = PROVIDER_SCHEMA.find((x) => x.id === selectedProvider()) || PROVIDER_SCHEMA[0]
       providerFields.innerHTML = p.fields.map((f) => {
         const type = f.type || 'text'
+        if (type === 'checkbox') {
+          return `<div class="toggle-row">
+            <div class="t-txt"><strong>${f.label}</strong>${f.hint ? `<p>${f.hint}</p>` : ''}</div>
+            <label class="switch"><input type="checkbox" id="pf-${f.key}"/><span class="slider"></span></label>
+          </div>`
+        }
+        if (type === 'duoRange') {
+          return `<div class="field duo-field">
+            <div class="duo-head">
+              <span><i class="dot lo"></i>${f.loLabel}</span>
+              <span><i class="dot hi"></i>${f.hiLabel}</span>
+            </div>
+            <div class="duo-range" id="duoRange">
+              <div class="duo-track"></div>
+              <div class="duo-fill" id="duoFill"></div>
+              <div class="duo-thumb duo-lo" id="duoThumbLo" role="slider" tabindex="0" aria-label="${f.loLabel}" aria-valuemin="${f.min}" aria-valuemax="${f.max}"></div>
+              <div class="duo-thumb duo-hi" id="duoThumbHi" role="slider" tabindex="0" aria-label="${f.hiLabel}" aria-valuemin="${f.min}" aria-valuemax="${f.max}"></div>
+              <div class="duo-bubble lo" id="duoBubbleLo"></div>
+              <div class="duo-bubble hi" id="duoBubbleHi"></div>
+            </div>
+            <div class="duo-scale"><span>${f.min}</span><span>${f.max}</span></div>
+            ${f.hint ? `<span class="hint">${f.hint}</span>` : ''}
+          </div>`
+        }
         const step = f.step ? ` step="${f.step}"` : ''
         const min = f.min ? ` min="${f.min}"` : ''
+        const max = f.max ? ` max="${f.max}"` : ''
         return `<div class="field">
           <label for="pf-${f.key}">${f.label}</label>
-          <input id="pf-${f.key}" type="${type}"${step}${min} placeholder="${f.placeholder || ''}"/>
+          <input id="pf-${f.key}" type="${type}"${step}${min}${max} placeholder="${f.placeholder || ''}"/>
           ${f.hint ? `<span class="hint">${f.hint}</span>` : ''}
         </div>`
       }).join('')
@@ -821,19 +1232,25 @@
       providerList.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o.querySelector('input').checked))
       renderFields()
       const p = PROVIDER_SCHEMA.find((x) => x.id === selectedProvider())
-      if (p) { // 回填已保存值
-        const cfg = window.__lastSettings && window.__lastSettings.asr && window.__lastSettings.asr[p.id]
-        if (p.id === 'bailian') {
-          const b = (window.__lastSettings && window.__lastSettings.asr && window.__lastSettings.asr.bailian) || {}
-          for (const f of p.fields) {
-            const el = $('pf-' + f.key); if (!el) continue
-            if (f.type === 'number') el.value = b[f.key] != null ? b[f.key] : f.def
-            else el.value = b[f.key] || ''
-          }
+      if (p) {
+        // cfgPath 指向非 asr.* 的配置组（键盘走顶层 compose），其余走 asr.<id>
+        const cfg = p.cfgPath
+          ? (window.__lastSettings && window.__lastSettings[p.cfgPath]) || {}
+          : (window.__lastSettings && window.__lastSettings.asr && window.__lastSettings.asr[p.id]) || {}
+        for (const f of p.fields) {
+          if (f.type === 'duoRange') { initDuoRange(f, cfg); continue }
+          const el = $('pf-' + f.key); if (!el) continue
+          if (f.type === 'checkbox') { el.checked = !!cfg[f.key]; continue }
+          if (f.type === 'number') el.value = cfg[f.key] != null ? cfg[f.key] : f.def
+          else el.value = cfg[f.key] || ''
         }
       }
-      // 禁用非当前 provider 之外的复杂逻辑（sherpa 无字段，其余字段仅 bailian 显示）
-      providerFields.querySelectorAll('input').forEach((el) => { el.disabled = selectedProvider() === 'sherpa' })
+      // 上下文增强 + 静音门限都只对云端生效：选中云端才显示，其它态折叠
+      const isCloud = selectedProvider() === 'bailian'
+      const ctxCard = $('ctxCard')
+      if (ctxCard) ctxCard.style.display = isCloud ? '' : 'none'
+      const vadCard = $('vadCard')
+      if (vadCard) vadCard.style.display = isCloud ? '' : 'none'
     }
 
     async function loadConfig() {
@@ -842,30 +1259,35 @@
         if (!res.ok) throw new Error('HTTP ' + res.status)
         const s = await res.json()
         window.__lastSettings = s
-        const provider = s.asr.provider
-        const target = providerList.querySelector(`input[name="provider"][value="${provider}"]`)
+        // 三态选中：优先 defaultInputMode（cloud/local/keyboard），兼容旧 config 用 provider 推导
+        const defMode = s.defaultInputMode || (s.asr.provider === 'bailian' ? 'cloud' : 'local')
+        const cardVal = { cloud: 'bailian', local: 'sherpa', keyboard: 'keyboard' }[defMode] || 'sherpa'
+        const target = providerList.querySelector(`input[name="provider"][value="${cardVal}"]`)
         if (target) target.checked = true
         renderRules(s.sendRules || {}, s.deleteRules || {})
-        // 上下文
         const bailian = s.asr.bailian || {}
         $('ctxEnabled').checked = !!bailian.contextEnabled
         $('vocabText').value = Object.keys(bailian.vocabulary || {}).join('\n')
-        // 触控板
         const tp = s.trackpad || {}
         $('tpSensitivity').value = tp.sensitivity != null ? tp.sensitivity : 1.8
+        $('tpScrollSensitivity').value = tp.scrollSensitivity != null ? tp.scrollSensitivity : 1.8
         $('tpEdgeZonePx').value = tp.edgeZonePx != null ? tp.edgeZonePx : 18
         $('tpEdgeDwellMs').value = tp.edgeDwellMs != null ? tp.edgeDwellMs : 250
         $('tpEdgeStepMs').value = tp.edgeStepMs != null ? tp.edgeStepMs : 30
         $('tpEdgeSpeed').value = tp.edgeSpeed != null ? tp.edgeSpeed : 12
         $('tpTrailMs').value = tp.trailMs != null ? tp.trailMs : 1000
-        // 静音门限（VAD）
         const vad = s.vad || {}
         $('vadEnabled').checked = vad.enabled !== false
         $('vadThreshold').value = vad.threshold != null ? vad.threshold : 0.006
         $('vadHoldMs').value = vad.holdMs != null ? vad.holdMs : 260
-        // 月度预算
+        const optimize = s.optimize || {}
+        $('optimizeModel').value = optimize.model || 'qwen-turbo'
+        renderOptimizePool(optimize.pool || [], optimize.defaultId || '')
         const budget = s.budget || {}
         $('budgetInput').value = budget.monthlyYuan != null ? budget.monthlyYuan : 0
+        $('httpPort').value = s.httpPort != null ? s.httpPort : 9898
+        $('httpsPort').value = s.httpsPort != null ? s.httpsPort : 9899
+        loadLoginItem()
         toggleFields()
       } catch (e) {
         $('asrStatus').textContent = '读取配置失败：' + e.message; $('asrStatus').className = 'status error'
@@ -877,14 +1299,36 @@
       const btn = $('saveAsrBtn'); const st = $('asrStatus')
       btn.disabled = true; st.className = 'status'; st.textContent = '保存中…'
       try {
-        const body = { asr: { provider } }
-        if (provider === 'bailian') {
-          const p = PROVIDER_SCHEMA.find((x) => x.id === 'bailian')
-          body.asr.bailian = {}
+        const p = PROVIDER_SCHEMA.find((x) => x.id === provider)
+        const body = {}
+        if (provider === 'keyboard') {
+          // 键盘：配置存顶层 compose 组，defaultInputMode=keyboard（保留默认引擎用于语音）
+          body.defaultInputMode = 'keyboard'
+          const compose = {}
           for (const f of p.fields) {
-            const el = $('pf-' + f.key)
-            if (!el) continue
-            body.asr.bailian[f.key] = f.type === 'number' ? Number(el.value) || f.def : el.value.trim()
+            const el = $('pf-' + f.key); if (!el) continue
+            compose[f.key] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) || f.def : el.value.trim()
+          }
+          body.compose = compose
+        } else {
+          body.defaultInputMode = provider === 'bailian' ? 'cloud' : 'local'
+          body.asr = { provider, [provider]: {} }
+          for (const f of p.fields) {
+            if (f.type === 'duoRange') {
+              body.asr[provider][f.loKey] = duoRangeState[f.loKey]
+              body.asr[provider][f.hiKey] = duoRangeState[f.hiKey]
+              continue
+            }
+            const el = $('pf-' + f.key); if (!el) continue
+            body.asr[provider][f.key] = f.type === 'number' ? Number(el.value) || f.def : el.value.trim()
+          }
+          // 云端：一并保存静音门限（VAD）。本地/键盘不提交——服务端 effectiveVad() 对 sherpa 会强制关闭。
+          if (provider === 'bailian') {
+            body.vad = {
+              enabled: $('vadEnabled').checked,
+              threshold: Number($('vadThreshold').value) || 0.006,
+              holdMs: Number($('vadHoldMs').value) || 260,
+            }
           }
         }
         const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -925,6 +1369,7 @@
         const num = (id) => Number($(id).value) || 0
         const body = { trackpad: {
           sensitivity: num('tpSensitivity'),
+          scrollSensitivity: num('tpScrollSensitivity'),
           edgeZonePx: num('tpEdgeZonePx'),
           edgeDwellMs: num('tpEdgeDwellMs'),
           edgeStepMs: num('tpEdgeStepMs'),
@@ -942,27 +1387,6 @@
       } finally { btn.disabled = false }
     })
 
-    // ---- 静音门限保存 ----
-    $('saveVadBtn').addEventListener('click', async () => {
-      const btn = $('saveVadBtn'); const st = $('vadStatus')
-      btn.disabled = true; st.className = 'status'; st.textContent = '保存中…'
-      try {
-        const num = (id) => Number($(id).value)
-        const body = { vad: {
-          enabled: $('vadEnabled').checked,
-          threshold: num('vadThreshold') || 0.006,
-          holdMs: num('vadHoldMs') || 260,
-        } }
-        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        const result = await res.json()
-        if (!res.ok || !result.ok) throw new Error(result.error || 'HTTP ' + res.status)
-        window.__lastSettings = result.settings
-        st.className = 'status success'; st.textContent = '已保存，手机下次录音生效。'
-        toast('静音门限已保存')
-      } catch (e) {
-        st.className = 'status error'; st.textContent = '保存失败：' + e.message
-      } finally { btn.disabled = false }
-    })
 
     // ---- 月度预算保存 ----
     $('saveBudgetBtn').addEventListener('click', async () => {
@@ -977,6 +1401,56 @@
         loadOverview()
       } catch (e) { toast('保存预算失败：' + e.message) }
       finally { btn.disabled = false }
+    })
+
+    // ---- 开机自启 ----
+    function loadLoginItem() {
+      const st = $('loginItemStatus')
+      fetch('/api/login-item', { cache: 'no-store' }).then((r) => r.json()).then((d) => {
+        $('loginItem').checked = !!d.launchAtLogin
+        st.textContent = ''
+      }).catch((e) => { st.className = 'status error status-block'; st.textContent = '读取开机自启状态失败：' + e.message })
+    }
+    $('loginItem').addEventListener('change', async () => {
+      const btn = $('loginItem'); const st = $('loginItemStatus')
+      st.className = 'status'; st.textContent = '设置中…'
+      try {
+        const res = await fetch('/api/login-item', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ launchAtLogin: btn.checked }) })
+        const result = await res.json()
+        if (!res.ok || !result.ok) throw new Error(result.error || 'HTTP ' + res.status)
+        st.className = 'status success'; st.textContent = '已「' + (result.launchAtLogin ? '开启' : '关闭') + '」开机自启。'
+        toast('开机自启' + (result.launchAtLogin ? '已开启' : '已关闭'))
+      } catch (e) {
+        loadLoginItem()
+        st.className = 'status error'; st.textContent = '设置失败：' + e.message
+      }
+    })
+
+    // ---- 端口保存并重启 ----
+    $('savePortsBtn').addEventListener('click', async () => {
+      const btn = $('savePortsBtn'); const st = $('portsStatus')
+      btn.disabled = true; st.className = 'status'; st.textContent = '保存中…'
+      try {
+        const httpPort = Number($('httpPort').value)
+        const httpsPort = Number($('httpsPort').value)
+        if (!Number.isInteger(httpPort) || httpPort < 1 || httpPort > 65535) throw new Error('HTTP 端口需为 1~65535 整数')
+        if (!Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65535) throw new Error('HTTPS 端口需为 1~65535 整数')
+        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ httpPort, httpsPort }) })
+        const result = await res.json()
+        if (!res.ok || !result.ok) throw new Error(result.error || 'HTTP ' + res.status)
+        st.className = 'status success'
+        if (result.portChanged) {
+          st.textContent = '已保存并重启服务。手机需要重新扫码并配对一次。'
+          toast('端口已生效，请用手机重新扫码配对')
+          // 端口变更后由主进程 restartAfterPortChange→renderWindow 重新加载新地址，
+          // 这里对旧 origin 做 location.reload 反而会指向已关闭的端口 → 连接被拒。故不 reload。
+        } else {
+          st.textContent = '端口未变化，已保存。'
+          toast('端口未变化')
+        }
+      } catch (e) {
+        st.className = 'status error'; st.textContent = '保存失败：' + e.message
+      } finally { btn.disabled = false }
     })
 
     // ================= 配置：发送/删除规则 =================
@@ -1020,6 +1494,111 @@
       finally { btn.disabled = false }
     })
 
+    // ================= 优化模板 =================
+    let optIdSeq = 0
+    function genOptId() {
+      optIdSeq += 1
+      return 'p' + Date.now().toString(36) + optIdSeq.toString(36)
+    }
+    function addOptimizeRow(entry) {
+      const list = $('optimizePoolList')
+      const row = document.createElement('div'); row.className = 'opt-row'
+      const id = entry && entry.id ? entry.id : genOptId()
+      row.dataset.id = id
+      const def = document.createElement('label'); def.className = 'opt-default'
+      const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'optDefault'; radio.value = id
+      def.appendChild(radio); def.appendChild(document.createTextNode(' 默认'))
+      const name = document.createElement('input'); name.type = 'text'; name.className = 'opt-name'; name.placeholder = '模板名称'; name.value = (entry && entry.name) || ''
+      const prompt = document.createElement('textarea'); prompt.className = 'opt-prompt'; prompt.rows = 3; prompt.placeholder = '提示词正文…'; prompt.value = (entry && entry.prompt) || ''
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'opt-del'; del.textContent = '×'; del.setAttribute('aria-label', '删除模板')
+      del.addEventListener('click', () => { row.remove(); ensureOptDefault() })
+      row.append(def, name, prompt, del); list.appendChild(row)
+    }
+    function ensureOptDefault() {
+      const radios = Array.from($('optimizePoolList').querySelectorAll('input[name="optDefault"]'))
+      if (!radios.some((r) => r.checked) && radios.length) radios[0].checked = true
+    }
+    function renderOptimizePool(pool, defaultId) {
+      $('optimizePoolList').innerHTML = ''
+      const entries = Array.isArray(pool) && pool.length ? pool : [{ id: genOptId(), name: '', prompt: '' }]
+      for (const entry of entries) addOptimizeRow(entry)
+      const radios = $('optimizePoolList').querySelectorAll('input[name="optDefault"]')
+      const target = Array.from(radios).find((r) => r.value === defaultId) || radios[0]
+      if (target) target.checked = true
+    }
+    $('addOptimizeBtn').addEventListener('click', () => { addOptimizeRow(); ensureOptDefault() })
+    $('saveOptimizeBtn').addEventListener('click', async () => {
+      const btn = $('saveOptimizeBtn'); const st = $('optimizeStatus')
+      btn.disabled = true; st.className = 'status'; st.textContent = '保存中…'
+      try {
+        const pool = []
+        for (const row of $('optimizePoolList').querySelectorAll('.opt-row')) {
+          const name = row.querySelector('.opt-name').value.trim()
+          const prompt = row.querySelector('.opt-prompt').value.trim()
+          if (!name && !prompt) continue // 跳过空白行
+          pool.push({ id: row.dataset.id, name, prompt })
+        }
+        if (!pool.length) throw new Error('优化模板至少保留一条（请填写名称与提示词）')
+        const checked = $('optimizePoolList').querySelector('input[name="optDefault"]:checked')
+        const defaultId = checked ? checked.value : pool[0].id
+        const body = { optimize: { model: $('optimizeModel').value.trim() || 'qwen-turbo', defaultId, pool } }
+        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        const result = await res.json()
+        if (!res.ok || !result.ok) throw new Error(result.error || 'HTTP ' + res.status)
+        window.__lastSettings = result.settings
+        st.className = 'status success'; st.textContent = '已保存，手机端下次优化可用新模板。'
+        toast('优化模板已保存')
+      } catch (e) {
+        st.className = 'status error'; st.textContent = '保存失败：' + e.message
+      } finally { btn.disabled = false }
+    })
+
+    // ================= 配对码 =================
+    function fmtPairExp(sec) {
+      if (sec == null) return ''
+      const m = Math.floor(sec / 60), s = sec % 60
+      return m > 0 ? `（${m}分${s}秒后失效）` : `（${s}秒后失效）`
+    }
+    let pairDeadline = 0     // 当前配对码失效时间戳（ms），0=无码
+    let pairCodeText = ''    // 最近一次下发的配对码（换码时重置倒计时锚点）
+    let pairTick = null
+
+    function renderPairExp() {
+      const exp = $('pairExp')
+      if (!exp || !pairDeadline) return
+      const remain = Math.max(0, Math.ceil((pairDeadline - Date.now()) / 1000))
+      exp.textContent = remain > 0 ? fmtPairExp(remain) : '（已失效，正在刷新…）'
+      if (remain <= 0) { pairDeadline = 0; loadMac() }
+    }
+
+    function updatePair(d) {
+      const code = $('pairCode'), exp = $('pairExp')
+      if (!code) return
+      if (d.pairCode) {
+        code.textContent = d.pairCode
+        // 换码/首次下发时用服务端 pairExpiresIn 重新锚定失效时间戳，之后本地每秒走秒，
+        // 而非每 10s 轮询的静态快照（旧实现倒计时冻结，过期后最长 ~10s 才刷新）。
+        if (d.pairCode !== pairCodeText) {
+          pairCodeText = d.pairCode
+          pairDeadline = Date.now() + (Number(d.pairExpiresIn) || 0) * 1000
+        }
+        renderPairExp()
+      } else {
+        code.textContent = '—'; exp.textContent = ''
+        pairCodeText = ''; pairDeadline = 0
+      }
+    }
+    if (!pairTick) pairTick = setInterval(renderPairExp, 1000)
+    async function pairRefresh() {
+      const btn = $('pairRefresh'); btn.disabled = true; btn.textContent = '刷新中…'
+      try {
+        await fetch('/api/pair/rotate', { method: 'POST' })
+        await loadQr()
+      } catch (e) { /* 忽略 */ }
+      finally { btn.disabled = false; btn.textContent = '刷新' }
+    }
+    $('pairRefresh').addEventListener('click', pairRefresh)
+
     // ================= 服务/二维码 =================
     async function loadMac() {
       try {
@@ -1029,9 +1608,9 @@
         $('ovCert').innerHTML = d.isSecure ? '<span class="mini-tag">已启用 HTTPS</span>' : '<span class="mini-tag warn">HTTP 开发模式</span>'
         $('netCert').innerHTML = d.isSecure ? '<span class="mini-tag">已启用 HTTPS</span>' : '<span class="mini-tag warn">HTTP 开发模式</span>'
         $('netNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
+        updatePair(d)
       } catch (e) { /* 忽略 */ }
     }
-    // 显示二维码：等 img 真正 decode 完成再切换，避免"src 已赋值但还没画出来"导致空白
     function revealQr(imgId, loadingId, dataUrl) {
       const img = $(imgId), load = $(loadingId)
       if (!dataUrl) return false
@@ -1039,7 +1618,7 @@
       img.onload = reveal
       img.onerror = () => { load.textContent = '二维码加载失败，点击重试'; load.onclick = () => loadQr() }
       img.src = dataUrl
-      if (img.complete && img.naturalWidth > 0) reveal() // 资源已缓存/已解码，直接显示
+      if (img.complete && img.naturalWidth > 0) reveal()
       return true
     }
 
@@ -1052,93 +1631,135 @@
         else { $('setupQrLoading').textContent = '未启用 HTTPS'; $('setupQrLoading').classList.remove('hidden') }
         $('phoneUrl').textContent = d.phoneUrl || '—'
         $('qrNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
+        updatePair(d)
       } catch (e) {
         if (retries > 0) { await new Promise(r => setTimeout(r, 400)); return loadQr(retries - 1) }
         $('qrNote').textContent = '读取二维码失败：' + e.message
       }
     }
 
-    // ================= 用量热力图 =================
-    const HM_CELL = 11, HM_GAP = 6, HM_STEP = HM_CELL + HM_GAP
-    function renderHeatmap(daily) {
-      const box = $('heatmap')
-      if (!daily || daily.length === 0) { box.innerHTML = '<div class="heatmap-empty">暂无用量数据</div>'; return }
-      const costs = daily.map((d) => d.costYuan || 0)
-      const max = Math.max(0, ...costs)
-      function lvl(c) {
-        if (!c || max <= 0) return 0
-        const r = c / max
-        if (r <= 0.25) return 1
-        if (r <= 0.5) return 2
-        if (r <= 0.75) return 3
-        return 4
-      }
-      // 起点对齐到周日，保证每列完整一周
-      const firstDate = new Date(daily[0].date + 'T00:00:00')
-      const col0 = new Date(firstDate)
-      col0.setDate(firstDate.getDate() - firstDate.getDay())
+    // ================= 用量折线图 =================
+    let chartYear = new Date().getFullYear()
+    let chartMonth = new Date().getMonth() + 1
+    let __lastDaily = null
+    let __chartSig = null // 最近一次实际渲染的数据/年月签名，用于跳过 3s 轮询里的重复重建
 
-      const daysByCol = new Map() // colIdx -> array of {date, cost, sessions, seconds}
-      for (const d of daily) {
-        const dt = new Date(d.date + 'T00:00:00')
-        if (dt < col0) continue
-        const col = Math.floor((dt - col0) / 86400000 / 7)
-        const row = dt.getDay() // 0=Sun..6=Sat
-        if (!daysByCol.has(col)) daysByCol.set(col, [])
-        const arr = daysByCol.get(col)
-        arr[row] = { date: d.date, cost: d.costYuan || 0, sessions: d.sessions || 0, seconds: d.seconds || 0 }
+    function renderMonthTabs() {
+      const box = $('monthTabs')
+      if (!box) return
+      box.innerHTML = ''
+      for (let m = 1; m <= 12; m++) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'month-tab' + (m === chartMonth ? ' active' : '')
+        btn.textContent = m + '月'
+        btn.addEventListener('click', () => {
+          chartMonth = m
+          renderMonthTabs()
+          renderChart(__lastDaily)
+        })
+        box.appendChild(btn)
       }
-      const cols = [...daysByCol.keys()].sort((a, b) => a - b)
-      const colCount = cols.length
+      $('chartYear').textContent = chartYear
+    }
 
-      let cells = ''
-      for (const col of cols) {
-        const arr = daysByCol.get(col)
-        for (let r = 0; r < 7; r++) {
-          const c = arr[r]
-          const cls = c ? `l${lvl(c.cost)}` : 'l0'
-          const title = c ? `${c.date} · ${fmtMoney(c.cost)} · ${c.sessions}次 · ${c.seconds.toFixed(1)}秒` : ''
-          cells += `<span class="hm-cell ${cls}" title="${esc(title)}"></span>`
-        }
+    function renderChart(daily) {
+      __lastDaily = daily
+      const wrap = $('usageChart')
+      const monthKey = `${chartYear}-${String(chartMonth).padStart(2, '0')}`
+      // loadOverview 每 3s 轮询一次，数据/年月没变时直接跳过，避免反复销毁重建 SVG 与 tooltip。
+      // 仅当月/年切换（chartMonth/chartYear 变了）或真实数据变化时才重绘。
+      const sig = monthKey + '|' + JSON.stringify(daily)
+      if (sig === __chartSig) return
+      __chartSig = sig
+      if (!daily || daily.length === 0) { wrap.innerHTML = '<div class="chart-empty">暂无用量数据</div>'; return }
+      const data = daily.filter((d) => d.date.startsWith(monthKey)).sort((a, b) => a.date.localeCompare(b.date))
+      if (data.length === 0) { wrap.innerHTML = '<div class="chart-empty">该月暂无用量数据</div>'; return }
+
+      const W = 720, H = 240
+      const pad = { top: 18, right: 18, bottom: 32, left: 48 }
+      const w = W - pad.left - pad.right
+      const h = H - pad.top - pad.bottom
+      const daysInMonth = new Date(chartYear, chartMonth, 0).getDate()
+      const costs = data.map((d) => d.costYuan || 0)
+      const maxCost = Math.max(...costs) || 1
+      const yMax = Math.max(0.01, Math.ceil(maxCost * 1.12 * 100) / 100)
+      const x = (dayIndex) => pad.left + (dayIndex / (daysInMonth - 1)) * w
+      const y = (v) => pad.top + h - (v / yMax) * h
+
+      // 网格 + Y 轴标签
+      const gridCount = 4
+      let gridLines = ''
+      for (let i = 0; i <= gridCount; i++) {
+        const val = (yMax / gridCount) * i
+        const yy = y(val)
+        gridLines += `<line x1="${pad.left}" y1="${yy}" x2="${W - pad.right}" y2="${yy}" stroke="var(--border)" stroke-dasharray="3,4" />`
+        gridLines += `<text x="${pad.left - 8}" y="${yy + 3}" text-anchor="end" font-size="10" fill="var(--text-3)">¥${val.toFixed(2)}</text>`
       }
 
-      // 月份标签：按列位置定位
-      const monthLabels = []
-      let lastMonth = ''
-      for (const col of cols) {
-        const arr = daysByCol.get(col)
-        const first = arr.find(Boolean)
-        if (!first) continue
-        const m = first.date.slice(0, 7)
-        if (m !== lastMonth) {
-          monthLabels.push({ month: Number(first.date.slice(5, 7)), left: col * HM_STEP })
-          lastMonth = m
-        }
+      // X 轴标签（每隔 5 天）
+      let xLabels = ''
+      for (let d = 1; d <= daysInMonth; d += 5) {
+        const xx = x(d - 1)
+        xLabels += `<text x="${xx}" y="${H - 10}" text-anchor="middle" font-size="10" fill="var(--text-3)">${d}日</text>`
       }
-      const monthsHtml = monthLabels.map((l) => `<span style="left:${l.left}px">${l.month}月</span>`).join('')
 
-      box.innerHTML = `
-        <div class="hm-month">${monthsHtml}</div>
-        <div class="hm-grid" style="gap:${HM_GAP}px">${cells}</div>
-        <div class="hm-legend">少
-          <span class="sw l0" style="background:var(--heat-0)"></span>
-          <span class="sw l1"></span><span class="sw l2"></span><span class="sw l3"></span><span class="sw l4"></span>
-          多
-        </div>`
-      // 修正 hm-grid 单元格间距（用 grid 表达需保持 7 行）
-      box.querySelector('.hm-grid').style.display = 'grid'
-      box.querySelector('.hm-grid').style.gridTemplateRows = 'repeat(7, 11px)'
-      box.querySelector('.hm-grid').style.gridAutoFlow = 'column'
-      box.querySelector('.hm-grid').style.gridAutoColumns = '11px'
+      // 折线 + 面积
+      const firstDay = parseInt(data[0].date.slice(8, 10), 10) - 1
+      let pathD = `M ${x(firstDay)} ${y(costs[0])}`
+      let areaD = pathD
+      for (let i = 1; i < data.length; i++) {
+        const day = parseInt(data[i].date.slice(8, 10), 10) - 1
+        const px = x(day), py = y(costs[i])
+        pathD += ` L ${px} ${py}`
+        areaD += ` L ${px} ${py}`
+      }
+      const lastDay = parseInt(data[data.length - 1].date.slice(8, 10), 10) - 1
+      areaD += ` L ${x(lastDay)} ${pad.top + h} L ${x(firstDay)} ${pad.top + h} Z`
+
+      // 数据点
+      let dots = ''
+      data.forEach((d) => {
+        const day = parseInt(d.date.slice(8, 10), 10) - 1
+        const cx = x(day), cy = y(d.costYuan || 0)
+        dots += `<circle cx="${cx}" cy="${cy}" r="4" fill="var(--accent)" stroke="#fff" stroke-width="2" class="chart-dot" data-date="${d.date}" data-cost="${d.costYuan}" data-sessions="${d.sessions}" data-seconds="${d.seconds}" />`
+      })
+
+      wrap.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" width="100%" height="240" class="chart-svg" preserveAspectRatio="xMidYMid meet">
+          ${gridLines}
+          ${xLabels}
+          <path d="${areaD}" fill="var(--accent-soft)" stroke="none" />
+          <path d="${pathD}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          ${dots}
+        </svg>
+        <div class="chart-tooltip" id="chartTooltip"></div>`
+
+      const tooltip = $('chartTooltip')
+      wrap.querySelectorAll('.chart-dot').forEach((dot) => {
+        dot.addEventListener('mouseenter', () => {
+          tooltip.innerHTML = `<strong>${dot.dataset.date}</strong><br/>${fmtMoney(dot.dataset.cost)} · ${dot.dataset.sessions}次 · ${Number(dot.dataset.seconds).toFixed(1)}秒`
+          tooltip.classList.add('show')
+          const wrapRect = wrap.getBoundingClientRect()
+          const dotRect = dot.getBoundingClientRect()
+          let left = dotRect.left - wrapRect.left + 8
+          let top = dotRect.top - wrapRect.top - tooltip.offsetHeight - 8
+          if (left + tooltip.offsetWidth > wrapRect.width) left = wrapRect.width - tooltip.offsetWidth - 8
+          tooltip.style.left = left + 'px'
+          tooltip.style.top = top + 'px'
+        })
+        dot.addEventListener('mouseleave', () => tooltip.classList.remove('show'))
+      })
     }
 
     // ================= 概览 / 用量 =================
+    function setTextIfExists(id, text) { const el = $(id); if (el) el.textContent = text }
     async function loadOverview() {
       try {
         const res = await fetch('/api/stats', { cache: 'no-store' })
         if (!res.ok) return
         const s = await res.json()
-        const pname = s.provider === 'bailian' ? '阿里云百炼（在线）' : 'sherpa（离线，免费）'
+        const pname = s.provider === 'bailian' ? '阿里云百炼（云端）' : 'sherpa（本地，免费）'
         $('ovProvider').textContent = pname
         $('ovProviderName').textContent = pname
         $('ovPrice').textContent = s.pricePerSecond.toFixed(6)
@@ -1154,9 +1775,15 @@
         $('sumTotal').textContent = fmtMoney(s.total.costYuan)
         $('sumTotalDetail').textContent = s.total.sessions + '次 · ' + s.total.seconds.toFixed(1) + '秒'
 
-        renderHeatmap(s.daily)
+        setTextIfExists('uSumToday', fmtMoney(s.today.costYuan))
+        setTextIfExists('uSumTodayDetail', s.today.sessions + '次 · ' + s.today.seconds.toFixed(1) + '秒')
+        setTextIfExists('uSumMonth', fmtMoney(s.month.costYuan))
+        setTextIfExists('uSumMonthDetail', s.month.sessions + '次 · ' + s.month.seconds.toFixed(1) + '秒')
+        setTextIfExists('uSumTotal', fmtMoney(s.total.costYuan))
+        setTextIfExists('uSumTotalDetail', s.total.sessions + '次 · ' + s.total.seconds.toFixed(1) + '秒')
 
-        // 月度预算进度
+        renderChart(s.daily)
+
         try {
           const b = (window.__lastSettings && window.__lastSettings.budget) || { monthlyYuan: 0, alertPct: 80 }
           const limit = Number(b.monthlyYuan) || 0
@@ -1169,7 +1796,7 @@
             fill.className = 'budget-bar-fill' + (used >= limit ? ' over' : (pct >= (b.alertPct || 80) ? ' warn' : ''))
             const left = Math.max(0, limit - used)
             hint.textContent = used >= limit
-              ? `本月已超预算 ¥${used.toFixed(2)} / ¥${limit.toFixed(2)}，建议切换离线或留意用量。`
+              ? `本月已超预算 ¥${used.toFixed(2)} / ¥${limit.toFixed(2)}，建议切换本地或留意用量。`
               : `本月 ¥${used.toFixed(2)} / ¥${limit.toFixed(2)}（${pct.toFixed(1)}%），剩余 ¥${left.toFixed(2)}。`
             hint.className = 'budget-hint' + (used >= limit ? ' over' : (pct >= (b.alertPct || 80) ? ' warn' : ''))
           } else {
@@ -1188,7 +1815,6 @@
               <span class="meta">${r.seconds.toFixed(1)}s · ${fmtMoney(r.costYuan)}</span>
             </div>`).join('')
         }
-        // 上下文预览：取最近 5 条上屏文本，模拟服务端 buildAsrContext 的输入
         const ctx = $('ctxPreview')
         if (ctx) {
           const ctxHist = (s.history || []).filter((r) => r.text && !r.text.startsWith('[错误]')).slice(-5)
@@ -1248,6 +1874,7 @@
               <div class="device-info"><strong>${esc(label)}</strong><small>${esc(plat)} · ${esc(ip)} · 最近活动：${fmtRelative(dev.lastActiveAt)}</small></div>
               <span class="device-actions">
                 <button class="rename-btn" data-device="${esc(dev.deviceId || dev.id || '')}" data-name="${esc(dev.name || '')}" title="重命名设备">${PEN_ICON}</button>
+                ${dev.mode ? `<span class="device-mode ${esc(dev.mode)}">${({ cloud: '云端', local: '本地', keyboard: '键盘' })[dev.mode] || ''}</span>` : ''}
                 <span class="device-state on">在线</span>
               </span>
             </div>`
@@ -1256,7 +1883,6 @@
             renameDevice(btn.dataset.device, btn.dataset.name)
           }))
         }
-        // 已命名设备（含离线）
         const knownList = $('knownDeviceList')
         if (knownList) {
           const known = d.known || []
@@ -1330,15 +1956,60 @@
       }
     }
     $('refreshLogsBtn').addEventListener('click', loadLogs)
-    $('logsHead').addEventListener('click', () => {
-      const head = $('logsHead')
-      head.classList.toggle('closed')
-      $('logViewer').classList.toggle('hidden', head.classList.contains('closed'))
+
+    // ================= 离线模型下载 =================
+    function fmtModelMB(bytes) { return (Number(bytes) / 1048576).toFixed(0) + ' MB' }
+    let __modelDownloading = false
+    function renderModelStatus(s) {
+      const st = $('modelStatus'), btn = $('downloadModelBtn'), prog = $('modelProgress')
+      if (s.available) {
+        if (st) { st.textContent = '已就绪'; st.className = 'status success' }
+        if (btn) { btn.disabled = true; btn.textContent = '已下载离线模型' }
+        if (prog) prog.style.display = 'none'
+        __modelDownloading = false
+      } else if (s.running) {
+        if (st) { st.textContent = '下载中…'; st.className = 'status' }
+        if (btn) btn.disabled = true
+        if (prog) { prog.style.display = ''; prog.textContent = s.file ? `正在下载 ${s.file}（${fmtModelMB(s.received)}）…` : '准备下载…' }
+        __modelDownloading = true
+      } else if (s.error) {
+        if (st) { st.textContent = '下载失败'; st.className = 'status error' }
+        if (btn) { btn.disabled = false; btn.textContent = '重试下载离线模型' }
+        if (prog) { prog.style.display = ''; prog.textContent = s.error }
+        __modelDownloading = false
+      } else {
+        if (st) { st.textContent = '未下载'; st.className = 'status' }
+        if (btn) { btn.disabled = false; btn.textContent = '下载离线模型（约 230MB）' }
+        if (prog) prog.style.display = 'none'
+        __modelDownloading = false
+      }
+    }
+    async function loadModelStatus() {
+      try {
+        const res = await fetch('/api/model/status', { cache: 'no-store' })
+        if (!res.ok) throw new Error('HTTP ' + res.status)
+        renderModelStatus(await res.json())
+      } catch (e) {
+        const st = $('modelStatus')
+        if (st) { st.textContent = '读取状态失败：' + e.message; st.className = 'status error' }
+      }
+    }
+    $('downloadModelBtn').addEventListener('click', async () => {
+      const btn = $('downloadModelBtn')
+      btn.disabled = true
+      try { await fetch('/api/model/download', { method: 'POST' }) } catch (e) { toast('下载请求失败：' + e.message) }
+      loadModelStatus()
     })
+    // 下载期间每 1.2s 轮询进度，结束/失败后自动停
+    setInterval(() => { if (__modelDownloading) loadModelStatus() }, 1200)
 
     // ================= 初始化 =================
     renderProviderCards()
+    renderMonthTabs()
+    $('prevYear').addEventListener('click', () => { chartYear--; renderMonthTabs(); renderChart(__lastDaily) })
+    $('nextYear').addEventListener('click', () => { chartYear++; renderMonthTabs(); renderChart(__lastDaily) })
     checkHealth(); setInterval(checkHealth, 5000)
+    loadModelStatus()
     loadConfig()
     loadMac(); setInterval(loadMac, 10000)
     loadOverview(); setInterval(loadOverview, 3000)

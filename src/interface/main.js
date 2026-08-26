@@ -2,8 +2,8 @@
 // 启动时不显示主窗口，仅驻留 macOS 系统状态栏（菜单栏）；点击图标弹出下拉菜单，
 // 通过菜单项打开控制面板（配置 / 二维码 / 使用帮助）。
 const { app, BrowserWindow, Tray, Menu, nativeImage, dialog, globalShortcut, systemPreferences } = require('electron')
-const { createServer, getLanIp } = require('./server')
-const { saveSettings } = require('../infrastructure/config')
+const { createServer, getLanIp, broadcastSettingsToAll } = require('./server')
+const { config, saveSettings } = require('../infrastructure/config')
 const { log } = require('../infrastructure/logger')
 const path = require('path')
 
@@ -27,14 +27,20 @@ async function closeCurrentServer() {
   if (!current) return
   current.wss?.clients.forEach((client) => { try { client.terminate() } catch {} })
   current.httpWss?.clients.forEach((client) => { try { client.terminate() } catch {} })
+  // 关闭 WebSocketServer 触发其 'close' 事件：清掉心跳定时器并从 allWss 广播集合摘除，
+  // 避免端口/IP 变更重启时旧实例（含每 30s 一次的空心跳）在内存里持续累积。
+  for (const wss of [current.wss, current.httpWss]) {
+    if (wss) { try { wss.close() } catch {} }
+  }
   for (const srv of [current.server, current.setupServer]) {
     if (srv) await new Promise((resolve) => srv.close(() => resolve()))
   }
   current = null
 }
 
-// 打开控制面板并聚焦。hash 定位导航页：overview = 概览, config = 配置, devices = 接入设备, help = 使用帮助；devices 可带子目标 devices/app 或 devices/setup 定位到具体二维码卡片
-async function openControl(hash = 'config', force = false) {
+// 打开控制面板并聚焦。hash 定位导航页：overview = 概览, settings = 配置, devices = 接入设备（使用帮助已并入此页）, usage = 用量；
+// devices 可带子目标 devices/app 或 devices/setup 定位到具体二维码卡片
+async function openControl(hash = 'settings', force = false) {
   if (!current || !win || win.isDestroyed()) return
   const base = current.controlUrl
   const target = `${base}#${hash}`
@@ -60,7 +66,7 @@ function toggleControl() {
 
 async function renderWindow() {
   if (!current) return
-  try { await win.loadURL(current.controlUrl + '#config') } catch (error) { log('main', '加载控制面板失败:', error.message) }
+  try { await win.loadURL(current.controlUrl + '#settings') } catch (error) { log('main', '加载控制面板失败:', error.message) }
 }
 
 async function startServices() {
@@ -69,17 +75,113 @@ async function startServices() {
   current = await createServer({
     onStatus: (status) => log('main', `手机状态: ${status}`),
     onQuit: () => { isQuitting = true; app.quit() },
+    onServicesChanged: restartAfterPortChange,
+    onLaunchAtLogin: apiSetLaunchAtLogin,
+    getLaunchAtLoginState,
   })
   await renderWindow()
   log('main', `服务已就绪: ${current.ipUrl || current.url}`)
 }
 
-// 从菜单栏直接切换 ASR 引擎（与设置页共享同一 config，立即生效）
+// 端口在控制面板被改好后重新启动：监听新端口、刷新控制面板地址/二维码。
+// 若新端口被占用会失败并报错，用户改回后即可恢复。
+async function restartAfterPortChange() {
+  try {
+    await startServices()
+    log('main', `端口已生效，服务已重启: ${current.ipUrl || current.url}`)
+  } catch (error) {
+    log('main', '按新端口重启服务失败:', error.message)
+    // 回退到内置默认端口，避免应用因端口冲突而停摆
+    dialog.showErrorBox('切换端口失败', `未能切换到新端口: ${error.message}\n已回退到默认端口 9898 / 9899。`)
+    try { saveSettings({ httpPort: 9898, httpsPort: 9899 }) } catch (_) {}
+    await startServices().catch((e) => {
+      log('main', '回退默认端口仍失败:', e.message)
+      dialog.showErrorBox('启动失败', `无法启动服务: ${e.message}`)
+    })
+  }
+}
+
+// 读取 macOS 实际登录项状态（以系统为准，而非我们以为的状态）。
+function getLaunchAtLoginState() {
+  try { return !!app.getLoginItemSettings().openAtLogin } catch (_) { return false }
+}
+
+// 「注册/取消 macOS 登录项」的核心：调 setLoginItemSettings 后用 getLoginItemSettings 复核，
+// 未真正生效就把 config 回退到系统真实状态（避免「勾了却没自启」的假象）。
+// 返回 { ok, actual }：ok=false 表示 macOS 未接受（未签名开发态常见）。
+function applyLoginItem(on) {
+  try { app.setLoginItemSettings({ openAtLogin: on }) } catch (_) { /* 用 get 复核兜底 */ }
+  const actual = getLaunchAtLoginState()
+  if (actual !== on) {
+    try { saveSettings({ launchAtLogin: actual }) } catch (_) {}
+  }
+  return { ok: actual === on, actual }
+}
+
+// 勾选/取消「开机自启」：写回 macOS 登录项 + config.json，立即生效。
+// checkbox 菜单项点击后 item.checked 即为新的目标状态。
+function setLaunchAtLogin(enable) {
+  const on = !!enable
+  // 开发态（未打包/未签名）下 app.setLoginItemSettings 会把「Electron」这个开发二进制注册成
+  // 登录项（而非 PhVoice），且 macOS 返回“成功”造成假象。这里在开发态直接拒绝“开启”。
+  if (on && !app.isPackaged) {
+    log('main', '开机自启: 开发态（未打包）不注册登录项，避免把 Electron 二进制当登录项')
+    dialog.showErrorBox('开发态暂不支持', '当前是未打包/未签名的开发运行，注册“开机自启”会把开发用的 Electron 二进制当作登录项，而不是 PhVoice。\n\n请先打包/签名（npm run build:mac）再开启。')
+    setupTray()
+    return
+  }
+  const { ok, actual } = applyLoginItem(on)
+  if (!ok) {
+    log('main', `开机自启: 设置未生效（macOS 当前=${actual}）。开发态未签名常被拒，打包/签名后即可正常。`)
+    dialog.showErrorBox('设置失败', `未能设置开机自启（macOS 未生效）。\n\n已签名/打包的 PhVoice 可以正常设置；当前是未签名的开发运行，系统不允许注册登录项。`)
+    setupTray() // 重建菜单，让勾选框回到真实状态
+    return
+  }
+  try { saveSettings({ launchAtLogin: on }) } catch (e) { log('main', '保存开机自启设置失败:', e.message) }
+  log('main', `开机自启: ${on ? '开启' : '关闭'}`)
+}
+
+// 启动时把 config 里的「开机自启」偏好应用到 macOS 登录项。默认关闭。
+// 打包/签名后的 App 才有实际意义；未签名的开发态设置会被系统拒绝，这里仅记录，不阻塞启动。
+function applyLaunchAtLogin() {
+  const want = !!config.launchAtLogin
+  // 仅在「确实要开且已打包/签名」时才注册登录项；默认关闭时跳过，避免开发态
+  // setLoginItemSettings(openAtLogin:false) 触发「Operation not permitted」噪声日志。
+  if (want && app.isPackaged) {
+    try { app.setLoginItemSettings({ openAtLogin: true }) } catch (_) { /* 见下，用 get 复核 */ }
+  }
+  const actual = getLaunchAtLoginState()
+  log('main', `开机自启: ${actual ? '开启' : '关闭'}${actual !== want ? '（未打包/未签名开发态常见，已跳过注册）' : ''}`)
+}
+
+// 控制面板 /api/login-item 用的开关：与托盘共用逻辑，但返回 {ok, launchAtLogin, error} 供 UI 反馈，不弹原生框。
+function apiSetLaunchAtLogin(enable) {
+  const on = !!enable
+  // 开发态（未打包）不注册登录项，理由同 setLaunchAtLogin；这里返回 {ok:false} 供面板反馈，不弹原生框。
+  if (on && !app.isPackaged) {
+    log('main', '开机自启: 开发态（未打包）不注册登录项')
+    return { ok: false, launchAtLogin: getLaunchAtLoginState(), error: '开发态（未打包/未签名）无法注册 PhVoice 登录项；请打包/签名后再开启。' }
+  }
+  const { ok, actual } = applyLoginItem(on)
+  if (!ok) {
+    log('main', `开机自启: 设置未生效（macOS 当前=${actual}）。开发态未签名常被拒，打包/签名后即可正常。`)
+    return { ok: false, launchAtLogin: actual, error: '开发态（未签名）无法注册登录项；打包/签名后的 PhVoice 即可。' }
+  }
+  try { saveSettings({ launchAtLogin: on }) } catch (e) { log('main', '保存开机自启设置失败:', e.message) }
+  setupTray() // 托盘勾选与本次保持一致
+  log('main', `开机自启: ${on ? '开启' : '关闭'}`)
+  return { ok: true, launchAtLogin: actual }
+}
+
+// 从菜单栏直接切换 ASR 引擎（与设置页共享同一 config，立即生效）。
+// 注意：切的是全局默认引擎——各手机可在对话页单独覆盖（云端/本地/键盘），
+// 覆盖的手机不受影响；跟随全局的手机通过广播 settings 即时生效。
 function switchProvider(provider) {
   try {
     saveSettings({ asr: { provider } })
+    broadcastSettingsToAll()
     log('main', `已切换识别服务: ${provider}`)
-    openControl('config', true)
+    openControl('settings', true)
   } catch (error) {
     log('main', '切换识别服务失败:', error.message)
     dialog.showErrorBox('切换失败', `${error.message}\n\n请在控制面板「配置」中完善后再试。`)
@@ -89,8 +191,8 @@ function switchProvider(provider) {
 // 菜单栏下拉菜单（参考系统菜单栏应用样式，但内容为 PhVoice 自身功能）
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
-    { label: '打开控制面板', click: () => openControl('config') },
-    { label: '使用帮助', click: () => openControl('help') },
+    { label: '打开控制面板', click: () => openControl('settings') },
+    { label: '使用帮助', click: () => openControl('devices') },
     { type: 'separator' },
     {
       label: '手机二维码',
@@ -102,10 +204,12 @@ function buildTrayMenu() {
     {
       label: '识别服务',
       submenu: [
-        { label: '离线（本地）', click: () => switchProvider('sherpa') },
-        { label: '在线（阿里云百炼）', click: () => switchProvider('bailian') },
+        { label: '本地（SenseVoice）', click: () => switchProvider('sherpa') },
+        { label: '云端（阿里云百炼）', click: () => switchProvider('bailian') },
       ],
     },
+    { type: 'separator' },
+    { label: '开机自启', type: 'checkbox', checked: !!config.launchAtLogin, click: (item) => setLaunchAtLogin(item.checked) },
     { type: 'separator' },
     { label: '退出 PhVoice', click: () => { isQuitting = true; app.quit() } },
   ])
@@ -200,6 +304,8 @@ async function boot() {
     backgroundColor: '#ececef',
     webPreferences: { nodeIntegration: false },
   })
+
+  applyLaunchAtLogin()
 
   // 关闭窗口时不退出，而是隐藏到菜单栏
   win.on('close', (event) => {

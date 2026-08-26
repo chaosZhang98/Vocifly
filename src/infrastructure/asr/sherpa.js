@@ -1,74 +1,49 @@
-// sherpa provider —— 基于 sherpa-onnx 流式 zipformer（中英双语，int8 量化）
-// 说完后用 ct-transformer 标点模型对整段做一次优化，再上屏。
-// 模型全局只加载一次；每次识别会话创建一个独立 stream。
+// sherpa provider —— 基于 sherpa-onnx 离线 SenseVoice（非实时，int8 量化）。
+//
+// 与旧版（流式 zipformer）的关键差异：SenseVoice 是非流式模型，没有逐字 partial，
+// 服务端靠「静音分段 + 长句兜底」把上行音频切成一个个 utterance，每段整段识别一次，
+// 结果作为「已定稿句」逐句回显。因此离线模式下手机端 VAD 必须关闭（见 server.js effectiveVad），
+// 才能拿到带静音边界的完整音频供分段。
+//
+// SenseVoice 自带标点 + ITN（useInverseTextNormalization），无需再挂独立标点模型。
+// 模型全局只加载一次；每个分段创建独立 offline stream。
+//
+// 仍实现 AsrPort 契约（onion 架构 Infrastructure 层）：
+//   createSession({ onPartial(finalized, partial), onFinal(text), config }) -> { start, pushAudio, finish }
+//   onPartial 两参：finalized=已定稿句拼接，partial=恒空（非实时无半句）。
 
 const path = require('path')
 const fs = require('fs')
 const sherpa = require('sherpa-onnx-node')
 const { log } = require('../logger')
 const paths = require('../paths')
-
-const MODEL_DIR = path.join(paths.modelsDir, 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20')
-const PUNCT_DIR = path.join(paths.modelsDir, 'sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12')
+// MODEL_DIR 从 model-download.js 复用：下载按钮与识别读取同一个目录，避免两处写死子目录名漂移。
+const { MODEL_DIR } = require('../model-download')
 
 let recognizer = null
 let recognizerError = null
-let punctuator = null
-
-// 标点模型独立懒加载：失败不影响识别主流程，只退回无标点结果
-function getPunctuator() {
-  if (punctuator !== null) return punctuator
-  try {
-    const int8 = path.join(PUNCT_DIR, 'model.int8.onnx')
-    const fp32 = path.join(PUNCT_DIR, 'model.onnx')
-    const modelFile = fs.existsSync(int8) ? int8 : fp32
-    if (!fs.existsSync(modelFile)) throw new Error('标点模型文件缺失')
-    punctuator = new sherpa.OfflinePunctuation({
-      model: { ctTransformer: modelFile, numThreads: 1, provider: 'cpu', debug: 0 },
-    })
-    log('asr', '标点模型加载完成:', path.basename(modelFile))
-  } catch (error) {
-    log('asr', '标点模型加载失败，退回无标点模式:', error.message)
-    punctuator = false
-  }
-  return punctuator
-}
 
 function getRecognizer() {
   if (recognizer || recognizerError) return { recognizer, error: recognizerError }
   try {
     const file = (name) => path.join(MODEL_DIR, name)
-    for (const name of [
-      'encoder-epoch-99-avg-1.int8.onnx',
-      'decoder-epoch-99-avg-1.int8.onnx',
-      'joiner-epoch-99-avg-1.int8.onnx',
-      'tokens.txt',
-    ]) {
+    for (const name of ['model.int8.onnx', 'tokens.txt']) {
       if (!fs.existsSync(file(name))) throw new Error(`模型文件缺失: ${name}`)
     }
-    recognizer = new sherpa.OnlineRecognizer({
+    recognizer = new sherpa.OfflineRecognizer({
       featConfig: { sampleRate: 16000, featureDim: 80 },
       modelConfig: {
-        transducer: {
-          encoder: file('encoder-epoch-99-avg-1.int8.onnx'),
-          decoder: file('decoder-epoch-99-avg-1.int8.onnx'),
-          joiner: file('joiner-epoch-99-avg-1.int8.onnx'),
+        senseVoice: {
+          model: file('model.int8.onnx'),
+          useInverseTextNormalization: 1, // 中文数字/日期归一化（自带标点，无需标点模型）
         },
         tokens: file('tokens.txt'),
         numThreads: 2,
         provider: 'cpu',
         debug: 0,
       },
-      decodingMethod: 'greedy_search',
-      enableEndpoint: true,
-      rule1MinTrailingSilence: 2.4,
-      // 判停阈值放宽：1.2s 太容易把拖长的音/自然停顿切成两段，
-      // 切分点前的字会被重复识别（"我——也不知道" -> "我我我 也不知道"）。
-      // 断句主要靠 final 的标点模型，endpoint 只做长停顿兜底。
-      rule2MinTrailingSilence: 2.0,
-      rule3MinUtteranceLength: 30,
     })
-    log('asr', 'sherpa-onnx 流式模型加载完成')
+    log('asr', 'sherpa-onnx SenseVoice 离线模型加载完成')
   } catch (error) {
     recognizerError = error
     log('asr', '模型加载失败:', error.message)
@@ -99,10 +74,13 @@ function rmsOf(buf) {
 }
 
 function createSession({ onPartial, onFinal, config }) {
-  // 静音分段配置（来自 config.asr.sherpa，可缺省）
+  // 分段配置（来自 config.asr.sherpa，可缺省）
   const cfg = config?.asr?.sherpa || {}
-  const SILENCE_BREAK_MS = Number(cfg.silenceBreakMs) || 450 // 停顿超此值钉死一句，前端做「已定稿/半句」分层
+  const SILENCE_BREAK_MS = Number(cfg.silenceBreakMs) || 450 // 停顿超此值钉死一句
   const SILENCE_RMS = Number(cfg.silenceRms) || 28           // 能量阈值，低于判静音（0~32767）
+  const VOICE_RMS = Number(cfg.voiceRms) || 300              // 判定为「真实语音」的能量阈值；低于此视为底噪，不识别（防静音幻觉）
+  const MAX_SEG_MS = Number(cfg.maxSegmentMs) || 12000       // 长句兜底：不停顿也强制切段，避免长时间无回显
+  const PREVIEW_SILENCE_MS = Math.min(SILENCE_BREAK_MS, 200) // 预览识别阈值：静音累积到此时提前识别（与剩余静音等待并行）
   const { recognizer: rec, error } = getRecognizer()
 
   // 模型不可用时回退到提示，保证链路可诊断
@@ -116,20 +94,25 @@ function createSession({ onPartial, onFinal, config }) {
     }
   }
 
-  let stream = null
   let finished = false
-  let lastPartial = ''
-  let segments = []
-  let currentSeg = ''
-  const pcmChunks = []
-  // 静音分段状态：连续静音超阈值就钉死一句，让前端分层（否则整段一直当 partial 变来变去）
+  let segments = []      // 已定稿句（SenseVoice 自带标点，直接拼接）
+  const segChunks = []   // 当前待识别分段的 PCM
+  const fullChunks = []  // 整段会话音频（用于异常时离线复现）
+  let segMs = 0          // 当前分段累计时长(ms)
+  // 静音分段状态
   let breakSilenceMs = 0
   let hadVoice = false
+  let segHasVoice = false // 当前段是否出现过「真实语音」能量（≥VOICE_RMS），否则视为底噪段，不识别
+  // 预览识别：静音累积到 PREVIEW_SILENCE_MS 就提前跑一次识别，与「静音等待」并行，
+  // 正式定稿时复用结果、隐藏 decode 耗时；previewSeq 用于作废「预览后又开口」的过期结果。
+  let previewTriggered = false
+  let pendingText = null
+  let previewSeq = 0
 
   // 会话音频落盘：识别异常时可用原始音频离线复现，定位问题在音频链路还是识别层
   function dumpAudio() {
     try {
-      const pcm = Buffer.concat(pcmChunks)
+      const pcm = Buffer.concat(fullChunks)
       if (pcm.length < 3200) return // 短于 0.1s 的不存
       const dir = paths.debugDir
       fs.mkdirSync(dir, { recursive: true })
@@ -154,95 +137,122 @@ function createSession({ onPartial, onFinal, config }) {
     }
   }
 
-  function drain() {
-    while (rec.isReady(stream)) rec.decode(stream)
-    let seg = rec.getResult(stream).text.trim()
-    // 停顿触发 endpoint：把这一句钉死（加句号），重置解码状态再收下一句。
-    // 不 reset 的话内部状态持续累积，后续输出会错乱重复。
-    while (rec.isEndpoint(stream)) {
-      if (seg) {
-        segments.push(seg)
-        log('asr', `停顿断句 #${segments.length}: ${seg}`)
-      }
-      rec.reset(stream)
-      while (rec.isReady(stream)) rec.decode(stream)
-      seg = rec.getResult(stream).text.trim()
-    }
-    currentSeg = seg
-    const base = segments.join('。')
-    // 有中间结果时，已定稿末尾补上句号，避免前端两段拼接后「A。BC」少标点
-    const head = base && seg ? `${base}。` : base
-    const full = head + seg
-    if (full && full !== lastPartial) {
-      lastPartial = full
-      onPartial(head, seg)
-    }
+  // 把一段 Int16 PCM 跑一次 SenseVoice，返回识别文本（空则 ''）
+  function transcribe(buf) {
+    const samples = int16ToFloat32(buf)
+    // 过短片段识别噪声/效果差，跳过；避免把无意义的静音段也转成字
+    if ((samples.length / 16000) * 1000 < 300) return ''
+    const stream = rec.createStream()
+    stream.acceptWaveform({ sampleRate: 16000, samples })
+    rec.decode(stream)
+    return (rec.getResult(stream).text || '').trim()
   }
 
-  // 静音分段：把当前半句钉死为已定稿句，并重置解码器开始下一句。
-  // 这样长段落说一轮，前端能实时看到「已定稿句越来越多、半句单独变」，不会整段抖。
-  function commitSilenceBreak() {
-    const seg = currentSeg
-    if (!seg) return
-    segments.push(seg)
-    log('asr', `静音断句 #${segments.length}: ${seg}`)
-    rec.reset(stream)
-    currentSeg = ''
-    if (segments.length) onPartial(segments.join('。'), '')
+  // 按 SILENCE_RMS 掐掉段首/段尾的静音边（10ms 窗 RMS）。SenseVoice 在纯静音上会
+  // 幻觉出 "I am."/"Yeah." 等高频英文填充词，识别前把静音边切掉，只留真实语音。
+  function trimSilence(buf) {
+    const frame = 160 // 10ms @16k 的样本数
+    const n = Math.floor(buf.length / 2)
+    let start = 0
+    let end = Math.floor(n / frame)
+    while (start < end && rmsOf(buf.subarray(start * frame * 2, (start + 1) * frame * 2)) < SILENCE_RMS) start++
+    while (end > start && rmsOf(buf.subarray((end - 1) * frame * 2, end * frame * 2)) < SILENCE_RMS) end--
+    return buf.subarray(start * frame * 2, end * frame * 2)
+  }
+
+  // 提前识别当前语音段：静音累积到 PREVIEW_SILENCE_MS 就异步跑一次（与剩余静音等待并行）。
+  // 结果缓存到 pendingText，正式定稿时复用；若预览后又开口（previewSeq 变化）则作废。
+  function triggerPreview() {
+    if (segChunks.length === 0 || !segHasVoice) return
+    const buf = Buffer.concat(segChunks)
+    const mySeq = previewSeq
+    setImmediate(() => {
+      if (mySeq !== previewSeq) return // 预览期间又检测到语音，结果作废
+      pendingText = transcribe(trimSilence(buf)) || null
+    })
+  }
+
+  // 把当前缓存段钉死为已定稿句，并回显（finalized=全部定稿句，partial 恒空）
+  function commitSegment() {
+    if (segChunks.length === 0) return
+    const buf = Buffer.concat(segChunks)
+    segChunks.length = 0
+    segMs = 0
+    const hadRealVoice = segHasVoice
+    segHasVoice = false
+    // 整段没出现过真实语音能量 → 是静音/底噪段，直接丢弃，不送进模型（防幻觉）
+    if (!hadRealVoice) {
+      log('asr', `丢弃静音段（无语音，${Math.round((buf.length / 2 / 16000) * 1000)}ms）`)
+      return
+    }
+    // 优先复用预览结果（预览已把 decode 耗时藏在静音等待里）；未就绪则同步兜底识别。
+    const text = pendingText != null ? pendingText : transcribe(trimSilence(buf))
+    if (text) {
+      segments.push(text)
+      log('asr', `分段定稿 #${segments.length}: ${text}`)
+      onPartial(segments.join(''), '')
+    }
   }
 
   return {
     start() {
-      stream = rec.createStream()
       finished = false
-      lastPartial = ''
       segments = []
-      currentSeg = ''
-      pcmChunks.length = 0
+      segChunks.length = 0
+      fullChunks.length = 0
+      segMs = 0
       breakSilenceMs = 0
       hadVoice = false
+      segHasVoice = false
     },
     pushAudio(buf) {
-      if (!stream || finished) return
-      pcmChunks.push(Buffer.from(buf))
-      stream.acceptWaveform({ sampleRate: 16000, samples: int16ToFloat32(buf) })
-      drain()
-      // 静音分段：能量低于阈值累计时长，达到静音窗口就把当前半句钉死为已定稿句。
-      const rms = rmsOf(buf)
-      if (rms < SILENCE_RMS) {
-        if (hadVoice) breakSilenceMs += (buf.length / 2 / 16000) * 1000
-      } else {
+      if (finished) return
+      const chunk = Buffer.from(buf)
+      segChunks.push(chunk)
+      fullChunks.push(chunk)
+      const chunkMs = (chunk.length / 2 / 16000) * 1000
+      segMs += chunkMs
+
+      // 静音分段：迟滞三段判定（语音 / 静音 / 中间地带）。
+      //   ≥VOICE_RMS  真实语音：开启分段、清零停顿
+      //   <SILENCE_RMS 静音：累计停顿，够窗口就钉死当前句
+      //   中间地带（底噪）：保持当前状态，既不误开分段、也不打断已有语音
+      const rms = rmsOf(chunk)
+      if (rms >= VOICE_RMS) {
         hadVoice = true
+        segHasVoice = true
         breakSilenceMs = 0
+        previewTriggered = false
+        pendingText = null
+        previewSeq++ // 作废上一次预览（若其异步识别尚未执行完）
+      } else if (rms < SILENCE_RMS) {
+        if (hadVoice) {
+          breakSilenceMs += chunkMs
+          if (!previewTriggered && breakSilenceMs >= PREVIEW_SILENCE_MS) {
+            previewTriggered = true
+            triggerPreview()
+          }
+        }
       }
       if (hadVoice && breakSilenceMs >= SILENCE_BREAK_MS) {
         breakSilenceMs = 0
         hadVoice = false
-        commitSilenceBreak()
+        commitSegment()
+        previewTriggered = false
+        pendingText = null
+        return
+      }
+      // 长句兜底：即使不停顿，累计到 MAX_SEG_MS 也强制切一段，避免长时间无回显。
+      if (segMs >= MAX_SEG_MS) {
+        commitSegment()
       }
     },
     finish() {
-      if (!stream || finished) return
+      if (finished) return
       finished = true
       dumpAudio()
-      stream.inputFinished()
-      drain()
-      // final 优化：整段无标点原文过一遍标点模型，输出带逗号/句号/问号的定稿
-      const allSegs = currentSeg ? [...segments, currentSeg] : segments
-      const raw = allSegs.join(' ')
-      const punct = getPunctuator()
-      let finalText = lastPartial
-      if (punct && raw) {
-        try {
-          const startAt = Date.now()
-          finalText = punct.addPunct(raw)
-          log('asr', `标点优化完成，耗时 ${Date.now() - startAt}ms`)
-        } catch (error) {
-          log('asr', '标点处理失败，使用无标点结果:', error.message)
-        }
-      }
-      onFinal(finalText)
-      stream = null
+      commitSegment() // 把最后残留段一并定稿
+      onFinal(segments.join(''))
     },
   }
 }

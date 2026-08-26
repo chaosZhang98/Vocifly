@@ -1,21 +1,23 @@
 // 离线自测：用 wav 文件跑当前配置的 ASR provider
 // 用法: node scripts/test-asr.js [wav路径]
-// 默认走 sherpa（本地模型）；想测百炼先配好 config.json，再:
+// 默认走 sherpa（本地 SenseVoice 离线模型）；想测百炼先配好 config.json，再:
 //   PHVOICE_ASR_PROVIDER=bailian node scripts/test-asr.js [wav路径]
 const path = require('path')
+const fs = require('fs')
 const sherpa = require('sherpa-onnx-node')
 const asr = require('../src/infrastructure/asr')
 
-const wavFile =
-  process.argv[2] ||
-  path.join(
-    __dirname,
-    '..',
-    'models',
-    'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20',
-    'test_wavs',
-    '0.wav'
-  )
+// 默认取 SenseVoice 自带的中文测试 wav；也可手动指定: node scripts/test-asr.js <wav路径>
+const SENSE_DIR = path.join(__dirname, '..', 'models', 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17')
+const candidates = [
+  process.argv[2],
+  path.join(SENSE_DIR, 'test_wavs', 'zh.wav'),
+]
+const wavFile = candidates.find((p) => p && fs.existsSync(p))
+if (!wavFile) {
+  console.error('未找到测试 wav，请先下载 SenseVoice 模型，或手动指定: node scripts/test-asr.js <wav路径>')
+  process.exit(1)
+}
 
 const wave = sherpa.readWave(wavFile)
 console.log(`测试音频: ${path.basename(wavFile)}  采样率=${wave.sampleRate}  时长=${(wave.samples.length / wave.sampleRate).toFixed(1)}s`)
@@ -33,7 +35,8 @@ for (let i = 0; i < wave.samples.length; i++) {
 
 let settled = false
 const session = asr.createSession({
-  onPartial: (text) => console.log(`[partial] ${text}`),
+  onPartial: (finalized, partial) =>
+    console.log(`[partial] finalized=${JSON.stringify(finalized)} partial=${JSON.stringify(partial || '')}`),
   onFinal: (text) => {
     if (settled) return
     settled = true
