@@ -35,7 +35,7 @@ function resolveHttpPort() {
 // 只杀 Vocifly 自己的 electron 进程（full-path 匹配，避免误杀 WorkBuddy 等其它 Electron 应用）。
 // 两段分别匹配「electron 主进程（dist 二进制）」和「.bin/electron 包装进程」。
 function killExisting() {
-  for (const pat of ['PhVoice/app/node_modules/electron', 'PhVoice/app/node_modules/.bin/electron']) {
+  for (const pat of ['Vocifly/app/node_modules/electron', 'Vocifly/app/node_modules/.bin/electron']) {
     try { execFileSync('pkill', ['-f', pat]) } catch {}
   }
 }
