@@ -5,7 +5,7 @@ const { WebSocketServer } = require('ws')
 
 const PORT = 18778
 const FAKE_KEY = 'sk-fake-bailian-key'
-process.env.PHVOICE_ASR_PROVIDER = 'bailian'
+process.env.VOCIFLY_ASR_PROVIDER = 'bailian'
 process.env.BAILIAN_API_KEY = FAKE_KEY
 process.env.BAILIAN_MODEL = 'qwen-audio-3.0-asr-flash-streaming'
 process.env.BAILIAN_GATEWAY = `ws://127.0.0.1:${PORT}/api-ws/v1/inference`
@@ -62,7 +62,7 @@ setTimeout(() => {
 }, 15000).unref()
 
 const session = asr.createSession({
-  context: [{ role: 'user', content: [{ type: 'input_text', text: '昨天提到了 PhVoice' }] }],
+  context: [{ role: 'user', content: [{ type: 'input_text', text: '昨天提到了 Vocifly' }] }],
   onPartial: (text) => console.log(`[partial] ${text}`),
   onFinal: (text) => {
     const ok =
@@ -71,7 +71,7 @@ const session = asr.createSession({
       receivedModel === 'qwen-audio-3.0-asr-flash-streaming' &&
       Array.isArray(receivedContext) &&
       receivedContext.length === 1 &&
-      receivedContext[0].content[0].text === '昨天提到了 PhVoice' &&
+      receivedContext[0].content[0].text === '昨天提到了 Vocifly' &&
       receivedAudio > 0 &&
       sawPartial
     console.log(`[final]   ${text}`)

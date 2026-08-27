@@ -13,7 +13,7 @@ const DEFAULTS = {
   sendRules: {},
   deleteRules: {},
   // 服务端口。默认 http 设置页 9898 / https 语音页+WS 9899；可在控制面板「配置 → 常规」改，改后自动重启生效。
-  // 也可用 PHVOICE_HTTP_PORT / PHVOICE_HTTPS_PORT 环境变量临时覆盖（优先级最高）。
+  // 也可用 VOCIFLY_HTTP_PORT / VOCIFLY_HTTPS_PORT 环境变量临时覆盖（优先级最高）。
   httpPort: 9898,
   httpsPort: 9899,
   // 是否开机自启（macOS 登录项）。默认关闭；可在菜单栏下拉菜单勾选，或在此文件手动改。
@@ -22,7 +22,7 @@ const DEFAULTS = {
   pasteDelayMs: 150,          // 上屏后到模拟回车
   attachPasteDelayMs: 1000,   // compose 多附件：每个附件上屏后到下一个之间的稳定等待（防剪贴板覆盖，目标 App 读取慢时可调大）
   // 键盘输入（compose）通路参数：手机端「键盘」模式下文字/附件上屏的行为。
-  // 走手机自带输入法，不占用 PhVoice 录音通道。
+  // 走手机自带输入法，不占用 Vocifly 录音通道。
   compose: {
     fileMaxCount: 5,        // 一次最多携带的附件数（手机端硬编码上限的服务端可调版）
     fileMaxMB: 20,          // 单个附件大小上限（MB）
@@ -161,7 +161,7 @@ function loadConfig() {
   }
 
   // 环境变量优先级最高，方便临时切换/调试
-  if (process.env.PHVOICE_ASR_PROVIDER) config.asr.provider = process.env.PHVOICE_ASR_PROVIDER
+  if (process.env.VOCIFLY_ASR_PROVIDER) config.asr.provider = process.env.VOCIFLY_ASR_PROVIDER
   if (process.env.DASHSCOPE_API_KEY) config.asr.bailian.apiKey = process.env.DASHSCOPE_API_KEY
   if (process.env.BAILIAN_API_KEY) config.asr.bailian.apiKey = process.env.BAILIAN_API_KEY
   if (process.env.BAILIAN_MODEL) config.asr.bailian.model = process.env.BAILIAN_MODEL

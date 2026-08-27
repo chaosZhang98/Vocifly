@@ -72,7 +72,7 @@ const PREWARM_TTL_MS = 15000
 let prewarm = null // { ws, taskId, started, timer, model }
 
 function buildHeaders(cfg) {
-  const headers = { Authorization: `Bearer ${cfg.apiKey}`, 'user-agent': 'phvoice/0.1.0' }
+  const headers = { Authorization: `Bearer ${cfg.apiKey}`, 'user-agent': 'vocifly/0.1.0' }
   if (cfg.workspaceId) headers['X-DashScope-WorkSpace'] = cfg.workspaceId
   return headers
 }

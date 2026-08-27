@@ -319,7 +319,7 @@ async function pasteImage(base64, attachName = 'image') {
   try {
     const data = Buffer.from(base64, 'base64')
     const ext = guessImageExt(data)
-    const tmp = path.join(os.tmpdir(), `phvoice-${Date.now()}-${ext}`)
+    const tmp = path.join(os.tmpdir(), `vocifly-${Date.now()}-${ext}`)
     fs.writeFileSync(tmp, data)
     const script = (ext === 'jpg')
       ? `set the clipboard to (read POSIX file "${tmp}" as «class JPEG»)`
@@ -347,7 +347,7 @@ async function pasteFile(filename, base64) {
   try {
     const data = Buffer.from(base64, 'base64')
     const safe = path.basename(filename || 'file')
-    const tmp = path.join(os.tmpdir(), `phvoice-${Date.now()}-${safe}`)
+    const tmp = path.join(os.tmpdir(), `vocifly-${Date.now()}-${safe}`)
     fs.writeFileSync(tmp, data)
     const script = `set the clipboard to POSIX file "${tmp}"`
     await execAsync('osascript', ['-e', script], { timeout: 5000 })
@@ -379,7 +379,7 @@ async function paste(text, { enter = false } = {}) {
     }
     // helper 未确认：先判断是不是辅助功能权限被拒，再决定是否走 osascript 兜底
     if (macControl.isPermissionDenied()) {
-      log('paste', '上屏失败：缺少「辅助功能」权限，请在 系统设置>隐私与安全性>辅助功能 中勾选 PhVoice 后重试')
+      log('paste', '上屏失败：缺少「辅助功能」权限，请在 系统设置>隐私与安全性>辅助功能 中勾选 Vocifly 后重试')
       return false
     }
     usedClipboard = true

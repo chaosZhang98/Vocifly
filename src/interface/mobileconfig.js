@@ -35,13 +35,13 @@ function buildMobileConfig(caFile) {
       <key>PayloadContent</key>
       <data>${certBase64}</data>
       <key>PayloadDescription</key>
-      <string>允许这台 iPhone 信任 PhVoice 的局域网 HTTPS 服务。</string>
+      <string>允许这台 iPhone 信任 Vocifly 的局域网 HTTPS 服务。</string>
       <key>PayloadDisplayName</key>
-      <string>PhVoice 本地根证书</string>
+      <string>Vocifly 本地根证书</string>
       <key>PayloadIdentifier</key>
       <string>com.phvoice.local-ca.certificate</string>
       <key>PayloadOrganization</key>
-      <string>PhVoice</string>
+      <string>Vocifly</string>
       <key>PayloadType</key>
       <string>com.apple.security.root</string>
       <key>PayloadUUID</key>
@@ -51,13 +51,13 @@ function buildMobileConfig(caFile) {
     </dict>
   </array>
   <key>PayloadDescription</key>
-  <string>用于 iPhone 通过局域网安全连接这台 Mac 上的 PhVoice。</string>
+  <string>用于 iPhone 通过局域网安全连接这台 Mac 上的 Vocifly。</string>
   <key>PayloadDisplayName</key>
-  <string>PhVoice 本地证书</string>
+  <string>Vocifly 本地证书</string>
   <key>PayloadIdentifier</key>
   <string>com.phvoice.local-ca</string>
   <key>PayloadOrganization</key>
-  <string>PhVoice</string>
+  <string>Vocifly</string>
   <key>PayloadRemovalDisallowed</key>
   <false/>
   <key>PayloadType</key>

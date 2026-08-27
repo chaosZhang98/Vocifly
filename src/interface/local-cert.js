@@ -11,6 +11,16 @@ const CERT_FILE = path.join(CERT_DIR, 'phvoice-local.pem')
 const KEY_FILE = path.join(CERT_DIR, 'phvoice-local-key.pem')
 const CA_FILE = path.join(CERT_DIR, 'phvoice-ca.pem')
 
+// 私钥只应属主可读写（0600）。mkcert 生成时一般为 0600，但做纵深防御、不依赖时序：
+// 在校验/生成路径都显式强制一次，避免异常情况下私钥落到更宽松的权限。
+function ensureKeyPerms() {
+  try {
+    fs.chmodSync(KEY_FILE, 0o600)
+  } catch {
+    // 私钥尚不存在（首次生成前）或系统不支持 chmod，忽略：该路径随后仍会校验存在性
+  }
+}
+
 // 是否为“真实局域网”私网地址（192.168.x / 10.x / 172.16-31.x）
 function isPrivateIPv4(ip) {
   const o = String(ip).split('.').map(Number)
@@ -105,6 +115,7 @@ function ensureLocalCertificate() {
   // 已有证书且 SAN 覆盖当前网络 → 直接使用，无需 mkcert。
   // mkcert 只在需要新建/重签时才用到；GUI 启动的进程 PATH 常无 homebrew，不应因此强行退 HTTP。
   if (certCoversCurrentNetwork() && fs.existsSync(CA_FILE)) {
+    ensureKeyPerms()
     return { ok: true, certFile: CERT_FILE, keyFile: KEY_FILE, caFile: CA_FILE, lanIp, localHostname, names }
   }
 
@@ -131,6 +142,7 @@ function ensureLocalCertificate() {
     // 走到这里 certCoversCurrentNetwork() 必为 false（否则上面已 return），直接重签
     execFileSync(mkcert, ['-cert-file', CERT_FILE, '-key-file', KEY_FILE, ...names], { stdio: 'pipe' })
     fs.copyFileSync(rootCaFile, CA_FILE)
+    ensureKeyPerms()
   } catch (error) {
     return { ok: false, reason: `本地证书生成失败: ${error.message}` }
   }

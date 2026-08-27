@@ -1,7 +1,7 @@
 // 离线自测：用 wav 文件跑当前配置的 ASR provider
 // 用法: node scripts/test-asr.js [wav路径]
 // 默认走 sherpa（本地 SenseVoice 离线模型）；想测百炼先配好 config.json，再:
-//   PHVOICE_ASR_PROVIDER=bailian node scripts/test-asr.js [wav路径]
+//   VOCIFLY_ASR_PROVIDER=bailian node scripts/test-asr.js [wav路径]
 const path = require('path')
 const fs = require('fs')
 const sherpa = require('sherpa-onnx-node')

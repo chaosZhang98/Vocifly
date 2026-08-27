@@ -51,7 +51,7 @@ async function optimize(text, opts = {}) {
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
-    'user-agent': 'phvoice/0.1.0',
+    'user-agent': 'vocifly/0.1.0',
   }
   if (cfg.workspaceId) headers['X-DashScope-WorkSpace'] = cfg.workspaceId
 

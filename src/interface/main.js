@@ -123,17 +123,17 @@ function applyLoginItem(on) {
 function setLaunchAtLogin(enable) {
   const on = !!enable
   // 开发态（未打包/未签名）下 app.setLoginItemSettings 会把「Electron」这个开发二进制注册成
-  // 登录项（而非 PhVoice），且 macOS 返回“成功”造成假象。这里在开发态直接拒绝“开启”。
+  // 登录项（而非 Vocifly），且 macOS 返回“成功”造成假象。这里在开发态直接拒绝“开启”。
   if (on && !app.isPackaged) {
     log('main', '开机自启: 开发态（未打包）不注册登录项，避免把 Electron 二进制当登录项')
-    dialog.showErrorBox('开发态暂不支持', '当前是未打包/未签名的开发运行，注册“开机自启”会把开发用的 Electron 二进制当作登录项，而不是 PhVoice。\n\n请先打包/签名（npm run build:mac）再开启。')
+    dialog.showErrorBox('开发态暂不支持', '当前是未打包/未签名的开发运行，注册“开机自启”会把开发用的 Electron 二进制当作登录项，而不是 Vocifly。\n\n请先打包/签名（npm run build:mac）再开启。')
     setupTray()
     return
   }
   const { ok, actual } = applyLoginItem(on)
   if (!ok) {
     log('main', `开机自启: 设置未生效（macOS 当前=${actual}）。开发态未签名常被拒，打包/签名后即可正常。`)
-    dialog.showErrorBox('设置失败', `未能设置开机自启（macOS 未生效）。\n\n已签名/打包的 PhVoice 可以正常设置；当前是未签名的开发运行，系统不允许注册登录项。`)
+    dialog.showErrorBox('设置失败', `未能设置开机自启（macOS 未生效）。\n\n已签名/打包的 Vocifly 可以正常设置；当前是未签名的开发运行，系统不允许注册登录项。`)
     setupTray() // 重建菜单，让勾选框回到真实状态
     return
   }
@@ -160,12 +160,12 @@ function apiSetLaunchAtLogin(enable) {
   // 开发态（未打包）不注册登录项，理由同 setLaunchAtLogin；这里返回 {ok:false} 供面板反馈，不弹原生框。
   if (on && !app.isPackaged) {
     log('main', '开机自启: 开发态（未打包）不注册登录项')
-    return { ok: false, launchAtLogin: getLaunchAtLoginState(), error: '开发态（未打包/未签名）无法注册 PhVoice 登录项；请打包/签名后再开启。' }
+    return { ok: false, launchAtLogin: getLaunchAtLoginState(), error: '开发态（未打包/未签名）无法注册 Vocifly 登录项；请打包/签名后再开启。' }
   }
   const { ok, actual } = applyLoginItem(on)
   if (!ok) {
     log('main', `开机自启: 设置未生效（macOS 当前=${actual}）。开发态未签名常被拒，打包/签名后即可正常。`)
-    return { ok: false, launchAtLogin: actual, error: '开发态（未签名）无法注册登录项；打包/签名后的 PhVoice 即可。' }
+    return { ok: false, launchAtLogin: actual, error: '开发态（未签名）无法注册登录项；打包/签名后的 Vocifly 即可。' }
   }
   try { saveSettings({ launchAtLogin: on }) } catch (e) { log('main', '保存开机自启设置失败:', e.message) }
   setupTray() // 托盘勾选与本次保持一致
@@ -188,7 +188,7 @@ function switchProvider(provider) {
   }
 }
 
-// 菜单栏下拉菜单（参考系统菜单栏应用样式，但内容为 PhVoice 自身功能）
+// 菜单栏下拉菜单（参考系统菜单栏应用样式，但内容为 Vocifly 自身功能）
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: '打开控制面板', click: () => openControl('settings') },
@@ -211,7 +211,7 @@ function buildTrayMenu() {
     { type: 'separator' },
     { label: '开机自启', type: 'checkbox', checked: !!config.launchAtLogin, click: (item) => setLaunchAtLogin(item.checked) },
     { type: 'separator' },
-    { label: '退出 PhVoice', click: () => { isQuitting = true; app.quit() } },
+    { label: '退出 Vocifly', click: () => { isQuitting = true; app.quit() } },
   ])
 }
 
@@ -230,7 +230,7 @@ function setupTray() {
     log('main', '创建托盘失败:', error.message)
     return
   }
-  tray.setToolTip('PhVoice · 手机当麦克风')
+  tray.setToolTip('Vocifly · 手机当麦克风')
   // macOS 上 setContextMenu 会自动处理左键弹出下拉菜单（与系统菜单栏应用一致）
   tray.setContextMenu(buildTrayMenu())
 }
@@ -273,7 +273,7 @@ function watchNetwork() {
         log('main', `服务已切换到新 IP: ${ip}`)
       } catch (error) {
         log('main', '服务切换失败:', error.message)
-        await dialog.showErrorBox('更新失败', `服务切换失败: ${error.message}\n请尝试重启 PhVoice。`)
+        await dialog.showErrorBox('更新失败', `服务切换失败: ${error.message}\n请尝试重启 Vocifly。`)
       }
     }
     // 选“稍后”：servingIp 不更新，下一轮检测还会再次提醒
@@ -299,7 +299,7 @@ async function boot() {
     height: 640,
     minWidth: 760,
     minHeight: 480,
-    title: 'PhVoice',
+    title: 'Vocifly',
     show: false, // 静默启动：不显示主窗口，仅驻留菜单栏
     backgroundColor: '#ececef',
     webPreferences: { nodeIntegration: false },
@@ -331,7 +331,7 @@ app.on('window-all-closed', () => {
 // 单实例锁：重复启动时直接退出，并把已有实例的窗口调到前台。
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
-  log('main', '检测到已有 PhVoice 实例在运行，本次启动退出')
+  log('main', '检测到已有 Vocifly 实例在运行，本次启动退出')
   app.quit()
 } else {
   app.on('second-instance', () => {
@@ -340,7 +340,7 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
-    // 隐藏 Dock 图标，让 PhVoice 像真正的菜单栏工具一样运行
+    // 隐藏 Dock 图标，让 Vocifly 像真正的菜单栏工具一样运行
     try { if (app.dock) app.dock.hide() } catch (error) { log('main', '隐藏 Dock 失败:', error.message) }
     // 注册全局快捷键：唤起/收起控制面板（与系统输入法切换等不冲突的常见组合）
     try {

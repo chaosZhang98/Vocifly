@@ -1,5 +1,5 @@
 appId: com.phvoice.app
-productName: PhVoice
+productName: Vocifly
 
 # 本地自用，不出网、不生成发布元数据；
 # 否则 electron-builder 因无 repository 生成 update-info 时报 computeChannelNames 崩溃

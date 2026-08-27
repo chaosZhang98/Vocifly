@@ -1,5 +1,5 @@
-// PhVoice 服务端：手机网页 + WebSocket 音频流 + 本地 HTTPS
-// 有证书时：HTTPS 应用跑在 9899，HTTP 证书安装页跑在 9898（默认；均可被 PHVOICE_*_PORT 覆盖）
+// Vocifly 服务端：手机网页 + WebSocket 音频流 + 本地 HTTPS
+// 有证书时：HTTPS 应用跑在 9899，HTTP 证书安装页跑在 9898（默认；均可被 VOCIFLY_*_PORT 覆盖）
 // 无证书时：退回 HTTP 开发模式，仅适合 Mac 本机浏览器验证
 const http = require('http')
 const { X509Certificate } = require('crypto')
@@ -46,24 +46,24 @@ function persistKnownDevices() {
   }
 }
 
-// 端口解析：环境变量（PHVOICE_*_PORT，优先）> config.json（可在控制面板改）> 内置默认。
+// 端口解析：环境变量（VOCIFLY_*_PORT，优先）> config.json（可在控制面板改）> 内置默认。
 // 之所以做成函数而非模块级常量，是为了让「改端口→重启服务」时能读到新值，无需退出进程。
 function resolveHttpPort() {
-  const env = Number(process.env.PHVOICE_HTTP_PORT)
+  const env = Number(process.env.VOCIFLY_HTTP_PORT)
   if (env) return env
   const cfg = Number(config.httpPort)
   if (cfg) return cfg
   return 9898
 }
 function resolveHttpsPort() {
-  const env = Number(process.env.PHVOICE_HTTPS_PORT)
+  const env = Number(process.env.VOCIFLY_HTTPS_PORT)
   if (env) return env
   const cfg = Number(config.httpsPort)
   if (cfg) return cfg
   return 9899
 }
 const WEB_DIR = path.join(__dirname, '..', '..', 'renderer')
-const ENABLE_PASTE = process.env.PHVOICE_PASTE !== '0'
+const ENABLE_PASTE = process.env.VOCIFLY_PASTE !== '0'
 // 注：ASR 上下文构造（buildAsrContext）及 CONTEXT_MAX_TURNS/CHARS、PARTIAL_THROTTLE_MS 已随
 // A4 迁入 application/SessionService.js，此处不再保留。
 
@@ -165,12 +165,12 @@ async function renderMacPage(ctx) {
     <section class="grid">
       <div>
         <h2>正常输入</h2>
-        <img src="${appQr}" alt="PhVoice 使用二维码"/>
+        <img src="${appQr}" alt="Vocifly 使用二维码"/>
         <p>已配置过证书的手机扫这里</p>
       </div>
       <div>
         <h2>首次配置</h2>
-        ${setupQr ? `<img src="${setupQr}" alt="PhVoice 证书二维码"/>` : ''}
+        ${setupQr ? `<img src="${setupQr}" alt="Vocifly 证书二维码"/>` : ''}
         <p>新手机先扫这里安装本地证书</p>
       </div>
     </section>
@@ -183,7 +183,7 @@ async function renderMacPage(ctx) {
   const insecureContent = `
     <section class="single">
       <h2>开发模式</h2>
-      <img src="${appQr}" alt="PhVoice 开发二维码"/>
+      <img src="${appQr}" alt="Vocifly 开发二维码"/>
       <p>当前没有启用 HTTPS，手机浏览器无法调用麦克风。</p>
       <small>${ctx.certReason || '请先运行 npm run setup:https'}</small>
     </section>`
@@ -192,7 +192,7 @@ async function renderMacPage(ctx) {
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"/>
-  <title>PhVoice</title>
+  <title>Vocifly</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; font-family: -apple-system, "PingFang SC", sans-serif; background: #f6f7f9; color: #202124; display: flex; flex-direction: column; }
@@ -224,7 +224,7 @@ async function renderMacPage(ctx) {
 <body>
   <header>
     <div>
-      <h1>PhVoice</h1>
+      <h1>Vocifly</h1>
       <p>把手机变成 Mac 的语音输入麦克风</p>
     </div>
     <a class="settings" href="/control">控制面板</a>
@@ -404,7 +404,7 @@ async function handleControlRoutes(req, res, ctx) {
     if (req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
       const settings = getSettings()
-      // 环境变量（PHVOICE_*_PORT）覆盖端口时，向面板报告实际生效端口（env > config > 默认），
+      // 环境变量（VOCIFLY_*_PORT）覆盖端口时，向面板报告实际生效端口（env > config > 默认），
       // 避免显示值与实际监听端口不一致。
       settings.httpPort = resolveHttpPort()
       settings.httpsPort = resolveHttpsPort()
@@ -650,7 +650,7 @@ function serveApp(req, res, ctx) {
       headers['Vary'] = 'Origin'
     }
     res.writeHead(200, headers)
-    res.end(JSON.stringify({ ok: true, service: 'phvoice' }))
+    res.end(JSON.stringify({ ok: true, service: 'vocifly' }))
     return
   }
 
@@ -676,10 +676,10 @@ function serveApp(req, res, ctx) {
     res.end('not found')
     return
   }
-  // 把 HTTP 设置页端口注入 app.js（window.PHVOICE_SETUP_PORT），避免写死端口（默认 9898，可在控制面板改，可被 PHVOICE_HTTP_PORT 覆盖）。
-  // 手机端语音页在同一台 serveApp 上加载 app.js，注入的 window.PHVOICE_SETUP_PORT 同样生效。
+  // 把 HTTP 设置页端口注入 app.js（window.VOCIFLY_SETUP_PORT），避免写死端口（默认 9898，可在控制面板改，可被 VOCIFLY_HTTP_PORT 覆盖）。
+  // 手机端语音页在同一台 serveApp 上加载 app.js，注入的 window.VOCIFLY_SETUP_PORT 同样生效。
   if (filePath === '/app.js') {
-    const content = `window.PHVOICE_SETUP_PORT = ${ctx.httpPort};\n` + fs.readFileSync(file, 'utf8')
+    const content = `window.VOCIFLY_SETUP_PORT = ${ctx.httpPort};\n` + fs.readFileSync(file, 'utf8')
     res.writeHead(200, {
       'Content-Type': 'application/javascript; charset=utf-8',
       // 禁缓存：前端迭代期 Safari 可能拿旧 JS，导致代码改了却不生效
@@ -704,7 +704,7 @@ function renderIosSetupPage(ctx) {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>PhVoice 首次配置</title>
+  <title>Vocifly 首次配置</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.6; min-height: 100dvh; }
@@ -790,7 +790,7 @@ function renderIosSetupPage(ctx) {
 
     <div class="panel visible" id="step1">
       <h2>输入配对码</h2>
-      <p class="subtitle">打开 Mac 上 PhVoice 的「接入设备」面板，查看 6 位配对码</p>
+      <p class="subtitle">打开 Mac 上 Vocifly 的「接入设备」面板，查看 6 位配对码</p>
       <input class="pair-input" id="pairCode" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*" placeholder="6 位数字" autocomplete="one-time-code"/>
       <button class="btn btn-primary" id="pairBtn" style="margin-top:16px">验证配对码</button>
       <div class="status" id="pairStatus">输入 Mac 上显示的 6 位配对码</div>
@@ -812,7 +812,7 @@ function renderIosSetupPage(ctx) {
           <div class="cert-step-content">
             <strong>安装描述文件</strong>
             <span class="path">设置 → 通用 → VPN 与设备管理</span>
-            <p>找到 <strong>PhVoice 本地证书</strong>，点进去安装</p>
+            <p>找到 <strong>Vocifly 本地证书</strong>，点进去安装</p>
           </div>
         </div>
         <div class="cert-step">
@@ -820,7 +820,7 @@ function renderIosSetupPage(ctx) {
           <div class="cert-step-content">
             <strong>信任根证书</strong>
             <span class="path">设置 → 通用 → 关于本机 → 证书信任设置</span>
-            <p>启用 <strong>PhVoice 本地根证书</strong> 开关</p>
+            <p>启用 <strong>Vocifly 本地根证书</strong> 开关</p>
           </div>
         </div>
       </div>
@@ -833,7 +833,7 @@ function renderIosSetupPage(ctx) {
     <div class="panel" id="step3">
       <h2>准备就绪</h2>
       <p class="subtitle">配对和证书都已完成</p>
-      <a class="btn btn-green" id="openApp" href="#">进入 PhVoice</a>
+      <a class="btn btn-green" id="openApp" href="#">进入 Vocifly</a>
     </div>
 
     <!-- 倒计时过渡面板（复用） -->
@@ -913,7 +913,7 @@ function renderIosSetupPage(ctx) {
       if (n === 3) {
         // 步骤 3「进入」：同样停 3 秒后自动进入触控板页面（按钮仍可手动点）
         document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-        countdown(3, '准备就绪，即将进入 PhVoice', enterApp)
+        countdown(3, '准备就绪，即将进入 Vocifly', enterApp)
       }
     }
 
@@ -923,7 +923,7 @@ function renderIosSetupPage(ctx) {
       var ctrl = new AbortController()
       var t = setTimeout(function () { ctrl.abort() }, 3000)
       fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
-        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 PhVoice', function () { location.href = target }) } })
+        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 Vocifly', function () { location.href = target }) } })
         .catch(function () { clearTimeout(t) })
     })()
 
@@ -976,7 +976,7 @@ function renderIosSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书已安装 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书已就绪，即将进入 PhVoice', function () { goStep(3) })
+            countdown(3, '证书已就绪，即将进入 Vocifly', function () { goStep(3) })
           }
         })
     }
@@ -998,7 +998,7 @@ function renderIosSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书验证通过 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书验证通过，即将进入 PhVoice', function () { goStep(3) })
+            countdown(3, '证书验证通过，即将进入 Vocifly', function () { goStep(3) })
           } else {
             certStatus.className = 'status error'
             certStatus.textContent = '验证失败（' + result.reason + '）。请确认描述文件已安装并信任。'
@@ -1019,7 +1019,7 @@ function renderAndroidSetupPage(ctx) {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>PhVoice 首次配置</title>
+  <title>Vocifly 首次配置</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.6; min-height: 100dvh; }
@@ -1108,7 +1108,7 @@ function renderAndroidSetupPage(ctx) {
 
     <div class="panel visible" id="step1">
       <h2>输入配对码</h2>
-      <p class="subtitle">打开 Mac 上 PhVoice 的「接入设备」面板，查看 6 位配对码</p>
+      <p class="subtitle">打开 Mac 上 Vocifly 的「接入设备」面板，查看 6 位配对码</p>
       <input class="pair-input" id="pairCode" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*" placeholder="6 位数字" autocomplete="one-time-code"/>
       <button class="btn btn-primary" id="pairBtn" style="margin-top:16px">验证配对码</button>
       <div class="status" id="pairStatus">输入 Mac 上显示的 6 位配对码</div>
@@ -1161,7 +1161,7 @@ function renderAndroidSetupPage(ctx) {
     <div class="panel" id="step3">
       <h2>准备就绪</h2>
       <p class="subtitle">配对和证书都已完成</p>
-      <a class="btn btn-green" id="openApp" href="#">进入 PhVoice</a>
+      <a class="btn btn-green" id="openApp" href="#">进入 Vocifly</a>
     </div>
 
     <div class="panel" id="countdownPanel">
@@ -1240,7 +1240,7 @@ function renderAndroidSetupPage(ctx) {
       if (n === 3) {
         // 步骤 3「进入」：同样停 3 秒后自动进入触控板页面（按钮仍可手动点）
         document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-        countdown(3, '准备就绪，即将进入 PhVoice', enterApp)
+        countdown(3, '准备就绪，即将进入 Vocifly', enterApp)
       }
     }
 
@@ -1250,7 +1250,7 @@ function renderAndroidSetupPage(ctx) {
       var ctrl = new AbortController()
       var t = setTimeout(function () { ctrl.abort() }, 3000)
       fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
-        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 PhVoice', function () { location.href = target }) } })
+        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 Vocifly', function () { location.href = target }) } })
         .catch(function () { clearTimeout(t) })
     })()
 
@@ -1303,7 +1303,7 @@ function renderAndroidSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书已安装 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书已就绪，即将进入 PhVoice', function () { goStep(3) })
+            countdown(3, '证书已就绪，即将进入 Vocifly', function () { goStep(3) })
           }
         })
     }
@@ -1331,7 +1331,7 @@ function renderAndroidSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书验证通过 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书验证通过，即将进入 PhVoice', function () { goStep(3) })
+            countdown(3, '证书验证通过，即将进入 Vocifly', function () { goStep(3) })
           } else {
             certStatus.className = 'status error'
             certStatus.textContent = '验证失败：' + result.reason + '\\n请确认用 Chrome 打开、证书安装在 CA 证书类型、且受信任凭据中已启用。'
@@ -1692,8 +1692,8 @@ async function createServer({ onStatus, onQuit, deps, onServicesChanged, onLaunc
   log('server', `ASR provider: ${config.asr.provider}`)
   const lanIp = getLanIp() || '127.0.0.1'
   const localHostname = getLocalHostname()
-  const forceHttp = process.env.PHVOICE_FORCE_HTTP === '1'
-  const cert = forceHttp ? { ok: false, reason: '已通过 PHVOICE_FORCE_HTTP=1 强制使用 HTTP' } : ensureLocalCertificate()
+  const forceHttp = process.env.VOCIFLY_FORCE_HTTP === '1'
+  const cert = forceHttp ? { ok: false, reason: '已通过 VOCIFLY_FORCE_HTTP=1 强制使用 HTTP' } : ensureLocalCertificate()
 
   if (cert.ok) {
     const appUrl = `https://${localHostname}:${HTTPS_PORT}`
@@ -1743,7 +1743,7 @@ async function createServer({ onStatus, onQuit, deps, onServicesChanged, onLaunc
 if (require.main === module) {
   createServer({ onStatus: (status) => console.log('[status]', status) })
     .then(({ url, setupUrl, isSecure, cert }) => {
-      log('server', `PhVoice 服务已启动: ${url}`)
+      log('server', `Vocifly 服务已启动: ${url}`)
       if (isSecure) log('server', `首次配置手机证书: ${setupUrl}`)
       else log('server', `当前是 HTTP 开发模式，手机浏览器无法调用麦克风。原因: ${cert.reason}`)
     })

@@ -1,4 +1,4 @@
-// PhVoice 手机端：点击说话开关 → PCM 流上行；partial 实时展示；再点结束
+// Vocifly 手机端：点击说话开关 → PCM 流上行；partial 实时展示；再点结束
 const statusEl = document.getElementById('status')
 const partialEl = document.getElementById('partial')
 const finalsEl = document.getElementById('finals')
@@ -405,7 +405,7 @@ function showUnpaired() {
     '<p class="unpaired-title">需要重新配对</p>' +
     '<p class="unpaired-desc">可能是换了浏览器或清除了数据，只需重新输入配对码即可，无需重新安装证书</p>' +
     '<ol class="unpaired-steps">' +
-      '<li><span class="unpaired-step-num">1</span><span>打开 Mac 上 PhVoice 的控制面板</span></li>' +
+      '<li><span class="unpaired-step-num">1</span><span>打开 Mac 上 Vocifly 的控制面板</span></li>' +
       '<li><span class="unpaired-step-num">2</span><span>进入「接入设备」页面，查看 6 位配对码</span></li>' +
     '</ol>' +
     '<div class="pair-form">' +

@@ -5,7 +5,7 @@ const { WebSocketServer } = require('ws')
 
 const PORT = 18779
 const FAKE_KEY = 'sk-fake-bailian-key'
-process.env.PHVOICE_ASR_PROVIDER = 'bailian'
+process.env.VOCIFLY_ASR_PROVIDER = 'bailian'
 process.env.BAILIAN_API_KEY = FAKE_KEY
 process.env.BAILIAN_MODEL = 'qwen-audio-3.0-asr-flash-streaming'
 process.env.BAILIAN_GATEWAY = `ws://127.0.0.1:${PORT}/api-ws/v1/inference`

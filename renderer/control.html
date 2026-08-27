@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>PhVoice 控制面板</title>
+  <title>Vocifly 控制面板</title>
   <style>
     :root {
       /* 更清新的森林色板：明亮、通透、低对比 */
@@ -507,7 +507,7 @@
           </svg>
         </div>
         <div>
-          <div class="brand-name">PhVoice</div>
+          <div class="brand-name">Vocifly</div>
           <div class="brand-sub">手机当电脑麦克风</div>
         </div>
       </div>
@@ -543,7 +543,7 @@
         </div>
         <button class="quit-btn" id="quitBtn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          退出 PhVoice
+          退出 Vocifly
         </button>
       </div>
     </aside>
@@ -627,14 +627,14 @@
                 <h3>首次配置</h3>
                 <p>新手机先扫这里安装本地证书</p>
                 <div class="qr-loading" id="setupQrLoading">正在生成…</div>
-                <img id="setupQrImg" class="hidden" alt="PhVoice 证书二维码"/>
+                <img id="setupQrImg" class="hidden" alt="Vocifly 证书二维码"/>
               </div>
               <div class="qr-card step-card" id="qrCardApp">
                 <span class="step-num">2</span>
                 <h3>正常输入</h3>
                 <p>已配置过证书的手机扫这里</p>
                 <div class="qr-loading" id="appQrLoading">正在生成…</div>
-                <img id="appQrImg" class="hidden" alt="PhVoice 使用二维码"/>
+                <img id="appQrImg" class="hidden" alt="Vocifly 使用二维码"/>
               </div>
             </div>
             <div class="url-line">
@@ -652,8 +652,8 @@
                 <h3>iPhone / iPad</h3>
                 <div class="help-step"><span class="help-num">1</span><div><strong>扫描「首次配置」二维码</strong><p>在「接入设备」页用手机扫第一个二维码，打开安装证书页面。</p></div></div>
                 <div class="help-step"><span class="help-num">2</span><div><strong>下载安装描述文件</strong><p>Safari 会提示「此网站正尝试下载一个配置描述文件」，请点「允许」。</p></div></div>
-                <div class="help-step"><span class="help-num">3</span><div><strong>安装描述文件</strong><span class="path">设置 &gt; 通用 &gt; VPN 与设备管理</span><p>在「已下载的描述文件」里找到 <strong>PhVoice 本地证书</strong>，点进去并选择「安装」。</p></div></div>
-                <div class="help-step"><span class="help-num">4</span><div><strong>信任根证书</strong><span class="path">设置 &gt; 通用 &gt; 关于本机 &gt; 证书信任设置</span><p>启用「PhVoice 本地根证书」。如果这里是空的，说明第 3 步还没装成功。</p></div></div>
+                <div class="help-step"><span class="help-num">3</span><div><strong>安装描述文件</strong><span class="path">设置 &gt; 通用 &gt; VPN 与设备管理</span><p>在「已下载的描述文件」里找到 <strong>Vocifly 本地证书</strong>，点进去并选择「安装」。</p></div></div>
+                <div class="help-step"><span class="help-num">4</span><div><strong>信任根证书</strong><span class="path">设置 &gt; 通用 &gt; 关于本机 &gt; 证书信任设置</span><p>启用「Vocifly 本地根证书」。如果这里是空的，说明第 3 步还没装成功。</p></div></div>
                 <div class="help-step"><span class="help-num">5</span><div><strong>返回并扫码使用</strong><p>回到「接入设备」页，用「正常输入」二维码进入语音输入。</p></div></div>
                 <div class="help-callout">证书安装只需一次。若更换 Wi-Fi 或 Mac 的 IP 变化，重新扫描「正常输入」二维码即可，证书无需重装。</div>
 
@@ -683,8 +683,8 @@
             <details class="fold">
               <summary>常见问题 <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></summary>
               <div class="fold-body">
-                <div class="help-step"><span class="help-num q">?</span><div><strong>手机收不到声音 / 无法上屏？</strong><p>确认手机和 Mac 在同一个 Wi-Fi，且 Mac 防火墙允许 PhVoice 接收连接。</p></div></div>
-                <div class="help-step"><span class="help-num q">?</span><div><strong>麦克风权限被拒绝？</strong><p>在手机浏览器设置中允许 PhVoice 网页使用麦克风。</p></div></div>
+                <div class="help-step"><span class="help-num q">?</span><div><strong>手机收不到声音 / 无法上屏？</strong><p>确认手机和 Mac 在同一个 Wi-Fi，且 Mac 防火墙允许 Vocifly 接收连接。</p></div></div>
+                <div class="help-step"><span class="help-num q">?</span><div><strong>麦克风权限被拒绝？</strong><p>在手机浏览器设置中允许 Vocifly 网页使用麦克风。</p></div></div>
                 <div class="help-step"><span class="help-num q">?</span><div><strong>识别费用怎么算？</strong><p>云端模式按音频时长计费（元/秒），单价可在「用量与费用」中查看；本地模式完全免费。</p></div></div>
               </div>
             </details>
@@ -790,7 +790,7 @@
               </div>
               <div class="field">
                 <label for="vocabText">自定义热词 / 专有名词（每行一个）</label>
-                <textarea id="vocabText" rows="5" placeholder="例如：PhVoice&#10;Alice&#10;李雷"></textarea>
+                <textarea id="vocabText" rows="5" placeholder="例如：Vocifly&#10;Alice&#10;李雷"></textarea>
                 <span class="hint">云端识别会把以下词作为热词提示，提高专有名词准确率。</span>
               </div>
               <div class="ctx-preview">
@@ -922,7 +922,7 @@
               <h2>常规</h2>
               <p class="desc">开机自启与端口设定。端口改动后会保存到 config.json 并自动重启服务。</p>
               <div class="toggle-row">
-                <div class="t-txt"><strong>开机自启</strong><p>勾选后 Mac 登录时自动启动 PhVoice。已签名/打包的 App 可正常设置；当前未签名的开发运行可能被系统拒绝。</p></div>
+                <div class="t-txt"><strong>开机自启</strong><p>勾选后 Mac 登录时自动启动 Vocifly。已签名/打包的 App 可正常设置；当前未签名的开发运行可能被系统拒绝。</p></div>
                 <label class="switch"><input type="checkbox" id="loginItem"/><span class="slider"></span></label>
               </div>
               <span class="status status-block" id="loginItemStatus"></span>
@@ -1087,7 +1087,7 @@
         ]
       },
       {
-        id: 'keyboard', name: '键盘', tag: 'kb', tagText: '输入法', desc: '用手机自带输入法打字或语音输入，不占 PhVoice 录音通道；文字/附件上屏后可选自动回车。', cfgPath: 'compose',
+        id: 'keyboard', name: '键盘', tag: 'kb', tagText: '输入法', desc: '用手机自带输入法打字或语音输入，不占 Vocifly 录音通道；文字/附件上屏后可选自动回车。', cfgPath: 'compose',
         fields: [
           { key: 'fileMaxCount', label: '附件数量上限', type: 'number', step: '1', min: '1', max: '20', def: 5, hint: '一次最多携带的附件数（默认 5）。' },
           { key: 'fileMaxMB', label: '单附件上限（MB）', type: 'number', step: '1', min: '1', max: '100', def: 20, hint: '单个文件超过此大小会被拒绝（默认 20MB）。' },
@@ -1926,7 +1926,7 @@
 
     // ================= 退出 =================
     $('quitBtn').addEventListener('click', async () => {
-      const ok = confirm('确定要退出 PhVoice 吗？退出后麦克风功能将停止。')
+      const ok = confirm('确定要退出 Vocifly 吗？退出后麦克风功能将停止。')
       if (!ok) return
       try { await fetch('/api/app-quit', { method: 'POST' }) }
       catch (e) { toast('已发送退出请求') }

@@ -1,6 +1,6 @@
 {
-  "name": "PhVoice",
-  "short_name": "PhVoice",
+  "name": "Vocifly",
+  "short_name": "Vocifly",
   "description": "手机当电脑麦克风，按住说话直接输入到 Mac",
   "start_url": "/",
   "scope": "/",

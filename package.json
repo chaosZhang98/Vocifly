@@ -1,7 +1,7 @@
 {
-  "name": "phvoice",
+  "name": "vocifly",
   "version": "0.1.0",
-  "description": "PhVoice - 手机当麦克风，Mac 语音输入",
+  "description": "Vocifly - 手机当麦克风，Mac 语音输入",
   "main": "src/interface/main.js",
   "scripts": {
     "start": "electron .",
@@ -11,8 +11,8 @@
     "test:mock": "node scripts/test-bailian-mock.js",
     "test:domain": "node scripts/test-domain.js",
     "trace": "node scripts/trace-recognition.js",
-    "build:mac": "electron-builder --mac --publish never && codesign --force --deep --sign - dist/mac-arm64/PhVoice.app",
-    "dist": "electron-builder --mac dmg --publish never && codesign --force --deep --sign - dist/mac-arm64/PhVoice.app"
+    "build:mac": "electron-builder --mac --publish never && codesign --force --deep --sign - dist/mac-arm64/Vocifly.app",
+    "dist": "electron-builder --mac dmg --publish never && codesign --force --deep --sign - dist/mac-arm64/Vocifly.app"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
