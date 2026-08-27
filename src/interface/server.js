@@ -14,7 +14,7 @@ const appList = require('../infrastructure/platform/app-switcher') // 前台应�
 const paster = require('../infrastructure/paste/mac-paster') // PastePort：mac 上屏
 const optimize = require('../infrastructure/optimize/bailian-optimize') // OptimizePort：百炼 qwen 文字优化
 const { SessionService } = require('../application/SessionService')
-const { ensureLocalCertificate, getLanIp, getLocalHostname } = require('./local-cert')
+const { ensureLocalCertificate, ensureMacTrust, macCertTrusted, getLanIp, getLocalHostname } = require('./local-cert')
 const { buildMobileConfig } = require('./mobileconfig')
 const { log } = require('../infrastructure/logger')
 const usage = require('../infrastructure/usage')
@@ -284,7 +284,7 @@ async function renderMacPage(ctx) {
 </html>`
 }
 
-const CONTROL_PATHS = ['/mac', '/control', '/api/settings', '/api/stats', '/api/mac', '/api/app-quit', '/api/devices', '/api/export', '/api/logs', '/api/pair/rotate', '/api/login-item', '/api/model/status', '/api/model/download']
+const CONTROL_PATHS = ['/mac', '/control', '/api/settings', '/api/stats', '/api/mac', '/api/mac/trust', '/api/app-quit', '/api/devices', '/api/export', '/api/logs', '/api/pair/rotate', '/api/login-item', '/api/model/status', '/api/model/download']
 
 // /api/health CORS 收紧：只给白名单内的 Origin 反射跨域头，避免任意站点随意探测。
 // 手机首次配置页（setupUrl）需要跨域 fetch /api/health 验证证书，因此必须纳入白名单。
@@ -568,6 +568,30 @@ async function handleControlRoutes(req, res, ctx) {
       pairCode: pair.code,
       pairExpiresIn: pair.expiresInSec,
     }))
+    return true
+  }
+
+  // Mac 本机钥匙串信任：GET 查状态（不弹框），POST 触发授权信任（会弹系统授权框）。
+  // 手机侧信任不依赖此步骤；此接口只解决「Mac 本机浏览器访问 HTTPS 免警告」。
+  if (urlPath === '/api/mac/trust') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ ok: true, macTrusted: macCertTrusted() }))
+      return true
+    }
+    if (req.method === 'POST') {
+      try {
+        const result = ensureMacTrust()
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify(result))
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        res.end(JSON.stringify({ ok: false, macTrusted: false, error: error.message }))
+      }
+      return true
+    }
+    res.writeHead(405)
+    res.end('method not allowed')
     return true
   }
 

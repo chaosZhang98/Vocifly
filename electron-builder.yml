@@ -31,6 +31,9 @@ asarUnpack:
 
 # 需要真实文件系统的资源：swift 源码（swiftc 是外部进程，读不了 asar）+ 配置模板
 extraResources:
+  - from: bin
+    to: bin
+    filter: ["mkcert-*"]
   - from: scripts
     to: scripts
     filter: ["**/*.swift"]

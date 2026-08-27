@@ -3,6 +3,7 @@ dist/
 config.json
 runtime/
 models/
+bin/
 
 # 系统杂项
 .DS_Store

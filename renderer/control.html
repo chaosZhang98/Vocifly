@@ -362,6 +362,12 @@
     .url-line { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg-soft); border: 1px dashed var(--border); }
     .url-line .label { font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
     .url-line code { flex: 1; font-size: 13px; font-family: var(--font-mono); color: var(--text); word-break: break-all; user-select: all; }
+    .mac-trust-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg-soft); border: 1px dashed var(--border); flex-wrap: wrap; }
+    .mac-trust-line.big { padding: 16px 18px; border: 1.5px solid var(--accent); background: var(--accent-soft); }
+    .mac-trust-info { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .mac-trust-info .label { font-size: 12px; color: var(--text-3); font-weight: 600; flex: 0 0 auto; }
+    .mac-trust-info .v { font-size: 12.5px; color: var(--text-2); }
+    .mac-trust-info .v.big-label { font-size: 14px; font-weight: 700; color: var(--text); }
     .copy-btn { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; flex: 0 0 auto; }
     .copy-btn:hover { background: var(--accent-strong); }
     .usage-note { margin: 16px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.6; }
@@ -587,6 +593,7 @@
               <div class="status-item"><span class="k">识别引擎（默认）</span><span class="v" id="ovProvider">—</span></div>
               <div class="status-item"><span class="k">连接地址</span><span class="v"><code id="ovUrl">—</code><button class="copy-btn" data-copy="ovUrl">复制</button></span></div>
               <div class="status-item"><span class="k">证书</span><span class="v" id="ovCert">—</span></div>
+              <div class="status-item"><span class="k">Mac 钥匙串信任</span><span class="v" id="ovMacTrust">—</span></div>
               <div class="status-item"><span class="k">在线设备</span><span class="v" id="ovDevices">0 台</span></div>
             </div>
           </div>
@@ -609,7 +616,16 @@
 
           <div class="panel">
             <h2>接入流程</h2>
-            <p class="desc">新设备先扫「首次配置」安装本地证书；已配置过的设备直接扫「正常输入」。</p>
+            <p class="desc">三步：先在 Mac 上信任本地证书，再让新手机扫「首次配置」，已配置过的手机直接扫「正常输入」。</p>
+
+            <div class="mac-trust-line big">
+              <div class="mac-trust-info">
+                <span class="v big-label">第一步 · Mac 本机钥匙串信任</span>
+                <span class="v" id="macTrustStatus">—</span>
+              </div>
+              <button class="mini-btn" id="macTrustBtn2">在 Mac 上信任</button>
+            </div>
+
             <div class="pair-line">
               <div class="pair-info">
                 <span class="label">当前配对码</span>
@@ -623,14 +639,14 @@
             </div>
             <div class="qr-grid">
               <div class="qr-card step-card" id="qrCardSetup">
-                <span class="step-num">1</span>
+                <span class="step-num">2</span>
                 <h3>首次配置</h3>
                 <p>新手机先扫这里安装本地证书</p>
                 <div class="qr-loading" id="setupQrLoading">正在生成…</div>
                 <img id="setupQrImg" class="hidden" alt="Vocifly 证书二维码"/>
               </div>
               <div class="qr-card step-card" id="qrCardApp">
-                <span class="step-num">2</span>
+                <span class="step-num">3</span>
                 <h3>正常输入</h3>
                 <p>已配置过证书的手机扫这里</p>
                 <div class="qr-loading" id="appQrLoading">正在生成…</div>
@@ -995,7 +1011,7 @@
         p.classList.toggle('hidden', !show)
         if (show) { p.classList.remove('fade-in'); void p.offsetWidth; p.classList.add('fade-in') }
       })
-      if (name === 'devices') loadQr()
+      if (name === 'devices') { loadQr(); loadMacTrust() }
     }
     document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)))
     function focusQrCard(kind) {
@@ -1610,6 +1626,49 @@
         $('netNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
         updatePair(d)
       } catch (e) { /* 忽略 */ }
+      await loadMacTrust()
+    }
+
+    // Mac 钥匙串信任状态（GET 探测 / POST 触发授权弹框）
+    // 概览页（ovMacTrust）：只显示状态，无按钮；
+    // 设备接入页（macTrustStatus + macTrustBtn2）：显示状态 + 「在 Mac 上信任」按钮。
+    async function loadMacTrust() {
+      try {
+        const res = await fetch('/api/mac/trust', { cache: 'no-store' })
+        const d = await res.json()
+        const stateHtml = d.macTrusted
+          ? '<span class="mini-tag">已信任本机钥匙串</span>'
+          : '<span class="mini-tag">未信任</span>'
+        // 概览：纯状态
+        const ov = $('ovMacTrust')
+        if (ov) ov.innerHTML = stateHtml
+        // 设备接入页：状态 + 按钮（第一步）
+        const st = $('macTrustStatus')
+        if (st) st.innerHTML = d.macTrusted
+          ? '<span class="mini-tag">已信任</span> 环境就绪，可以扫码了'
+          : '<span class="mini-tag">待完成</span> 点右侧按钮授权一次（不影响手机使用）'
+        const btn = $('macTrustBtn2')
+        if (btn) {
+          btn.disabled = d.macTrusted
+          btn.textContent = d.macTrusted ? '已信任' : '在 Mac 上信任'
+          if (!btn.dataset.bound) {
+            btn.dataset.bound = '1'
+            btn.addEventListener('click', async () => {
+              btn.disabled = true
+              btn.textContent = '请查看屏幕授权框…'
+              try {
+                await fetch('/api/mac/trust', { method: 'POST' })
+              } catch (e) { /* 忽略 */ }
+              await loadMacTrust()
+            })
+          }
+        }
+      } catch (e) {
+        const ov = $('ovMacTrust')
+        if (ov) ov.textContent = '—'
+        const st = $('macTrustStatus')
+        if (st) st.textContent = '—'
+      }
     }
     function revealQr(imgId, loadingId, dataUrl) {
       const img = $(imgId), load = $(loadingId)

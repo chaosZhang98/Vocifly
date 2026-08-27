@@ -3,6 +3,7 @@
 // 通过菜单项打开控制面板（配置 / 二维码 / 使用帮助）。
 const { app, BrowserWindow, Tray, Menu, nativeImage, dialog, globalShortcut, systemPreferences } = require('electron')
 const { createServer, getLanIp, broadcastSettingsToAll } = require('./server')
+const { ensureMacTrust, macCertTrusted } = require('./local-cert')
 const { config, saveSettings } = require('../infrastructure/config')
 const { log } = require('../infrastructure/logger')
 const path = require('path')
@@ -81,6 +82,21 @@ async function startServices() {
   })
   await renderWindow()
   log('main', `服务已就绪: ${current.ipUrl || current.url}`)
+  maybeTrustMacCert()
+}
+
+// 服务就绪后的状态探测（不弹框）。macOS 15 上「启动即自动弹授权框」会被
+// Authorization Services 拒绝（无用户交互上下文），所以信任动作改为控制面板
+// 显式按钮 /api/mac/trust 触发；这里仅在启动时记录一次信任状态，供面板展示。
+function maybeTrustMacCert() {
+  if (!current || !current.cert || !current.cert.ok) return
+  try {
+    const trusted = macCertTrusted()
+    if (trusted) log('main', '本地 CA 已被 Mac 钥匙串信任')
+    else log('main', '本地 CA 尚未被 Mac 钥匙串信任（手机链路不受影响）')
+  } catch (e) {
+    log('main', 'Mac 信任状态探测异常:', e.message)
+  }
 }
 
 // 端口在控制面板被改好后重新启动：监听新端口、刷新控制面板地址/二维码。

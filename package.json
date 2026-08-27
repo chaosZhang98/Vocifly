@@ -7,12 +7,13 @@
     "start": "electron .",
     "dev": "node src/interface/server.js",
     "setup:https": "node scripts/setup-local-https.js",
+    "fetch:mkcert": "node scripts/fetch-mkcert.js",
     "test:asr": "node scripts/test-asr.js",
     "test:mock": "node scripts/test-bailian-mock.js",
     "test:domain": "node scripts/test-domain.js",
     "trace": "node scripts/trace-recognition.js",
-    "build:mac": "electron-builder --mac --publish never && codesign --force --deep --sign - dist/mac-arm64/Vocifly.app",
-    "dist": "electron-builder --mac dmg --publish never && codesign --force --deep --sign - dist/mac-arm64/Vocifly.app"
+    "build:mac": "npm run fetch:mkcert && electron-builder --mac --publish never && codesign --force --deep --sign - dist/mac-arm64/Vocifly.app",
+    "dist": "npm run fetch:mkcert && electron-builder --mac dmg --publish never && codesign --force --deep --sign - dist/mac-arm64/Vocifly.app"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
